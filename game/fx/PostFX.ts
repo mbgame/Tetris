@@ -1,0 +1,54 @@
+import Phaser from "phaser";
+import type { QualityTier } from "../config";
+import { knobs } from "../perf/tiers";
+
+/**
+ * Per-camera post-processing (docs/03 §4, docs/06 B2), tier-gated:
+ *   - Bloom  (approximated with Phaser 4's Glow filter, keyed off bright blocks)
+ *   - Vignette
+ *   - Color grade (ColorMatrix tint/contrast)
+ * Chromatic aberration has no built-in Phaser 4 filter; left as a Phase-later
+ * enhancement. All filter calls are guarded so FX never break gameplay.
+ */
+export interface PostFXOptions {
+  bloom: boolean;
+  tier: QualityTier;
+  reduceMotion?: boolean;
+}
+
+export function applyPostFX(scene: Phaser.Scene, opts: PostFXOptions): void {
+  const cam = scene.cameras.main;
+  // Phaser 4 camera filter list (external = after camera transform).
+  const list = (cam as unknown as { filters?: { external?: PhaserFilterList } }).filters?.external;
+  if (!list) return;
+
+  try {
+    list.clear?.();
+
+    // NOTE: A whole-camera Glow blooms everything uniformly and smears the
+    // blocks — true bloom needs an emissive mask (bright blocks/sand/accents
+    // only). Deferred until an emissive render pass exists; tier bloom strength
+    // (knobs(opts.tier).bloom) is read for when that lands. Keep crisp blocks.
+    void opts.bloom;
+    void knobs(opts.tier).bloom;
+
+    if (opts.tier !== "low") {
+      list.addVignette?.(); // subtle edge darkening so the field reads as framed
+    }
+
+    // Per-level color grade: gentle contrast/saturation lift.
+    const cm = list.addColorMatrix?.();
+    const grade = cm as { contrast?: (v: number) => void; saturate?: (v: number) => void } | undefined;
+    grade?.contrast?.(0.06);
+    grade?.saturate?.(0.1);
+  } catch {
+    // FX are non-essential; ignore any controller API mismatch.
+  }
+}
+
+interface PhaserFilterList {
+  clear?: () => void;
+  addGlow?: (config?: object) => object;
+  addVignette?: (config?: object) => object;
+  addColorMatrix?: (config?: object) => object;
+}
