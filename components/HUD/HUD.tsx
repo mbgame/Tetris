@@ -14,12 +14,13 @@ export default function HUD({ onPause, onSettings }: { onPause: () => void; onSe
   const glyphs = useSettings((s) => s.graphics.colorblindGlyphs);
   const showNextCount = useSettings((s) => s.gameplay.showNextCount);
 
-  let palette: { hex: string; glyph: string }[] = [];
+  let palette: { id: number; hex: string; glyph: string }[] = [];
   try {
     palette = getLevel(level).colors;
   } catch {
     /* level not loaded yet */
   }
+  const hexFor = (colorId: number) => palette.find((c) => c.id === colorId)?.hex;
 
   return (
     <div className="pointer-events-none absolute inset-0 select-none text-white">
@@ -71,9 +72,9 @@ export default function HUD({ onPause, onSettings }: { onPause: () => void; onSe
       <div className="absolute right-3 top-1/4 font-mono">
         <div className="text-xs opacity-70">NEXT</div>
         <div className="flex flex-col gap-1">
-          {next.slice(0, showNextCount).map((t, i) => (
+          {next.slice(0, showNextCount).map((item, i) => (
             <div key={i} className="rounded bg-black/30 p-1">
-              <PieceTile type={t} size={i === 0 ? 52 : 40} />
+              <PieceTile type={item.type} color={hexFor(item.colorId)} size={i === 0 ? 52 : 40} />
             </div>
           ))}
         </div>

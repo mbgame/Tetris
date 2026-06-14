@@ -1,14 +1,21 @@
 import { spawnPiece, type ActivePiece, type PieceType } from "./Piece";
 import { SevenBag, ColorSelector, createRng, type ColorBagRule } from "./rng";
 
+/** A queued piece with its colour decided up front so the HUD preview matches spawn. */
+export interface QueuedPiece {
+  type: PieceType;
+  colorId: number;
+}
+
 /**
  * Owns piece generation, the next-N preview, and the hold slot — pure logic,
- * NO Phaser imports. Color is assigned from the level palette at spawn time;
- * the preview only knows shapes (which is all the HUD shows).
+ * NO Phaser imports. Colours are assigned when a piece enters the buffer (not at
+ * spawn), so `preview()` returns exactly the type+colour that will spawn.
  */
 export class PieceQueue {
   private bag: SevenBag;
   private colors: ColorSelector;
+  private buffer: QueuedPiece[] = [];
   private holdType: PieceType | null = null;
   private holdUsed = false;
 
@@ -18,19 +25,29 @@ export class PieceQueue {
     this.colors = new ColorSelector(paletteSize, rule, rng);
   }
 
-  private pull(): ActivePiece {
-    return spawnPiece(this.bag.next(), this.colors.next());
+  /** Keep at least `min` pieces (type+colour pre-decided) in the buffer. */
+  private fill(min: number): void {
+    while (this.buffer.length < min) {
+      this.buffer.push({ type: this.bag.next(), colorId: this.colors.next() });
+    }
+  }
+
+  private take(): QueuedPiece {
+    this.fill(1);
+    return this.buffer.shift()!;
   }
 
   /** Spawn the next piece for a fresh drop; re-enables hold. */
   spawnNext(): ActivePiece {
     this.holdUsed = false;
-    return this.pull();
+    const it = this.take();
+    return spawnPiece(it.type, it.colorId);
   }
 
-  /** Shapes of the upcoming pieces (for the HUD next queue). */
-  preview(n: number): PieceType[] {
-    return this.bag.peek(n);
+  /** The exact upcoming pieces (type + colour) for the HUD next queue. */
+  preview(n: number): QueuedPiece[] {
+    this.fill(n);
+    return this.buffer.slice(0, n);
   }
 
   get hold(): PieceType | null {
@@ -51,7 +68,8 @@ export class PieceQueue {
 
     if (this.holdType === null) {
       this.holdType = current.type;
-      return this.pull();
+      const it = this.take();
+      return spawnPiece(it.type, it.colorId);
     }
     const swap = this.holdType;
     this.holdType = current.type;

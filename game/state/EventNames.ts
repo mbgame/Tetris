@@ -78,8 +78,13 @@ export interface ComboUpdatePayload {
 /** Next-N queue + hold slot, as tetromino type ids ("I","O","T",…). */
 export type PieceType = "I" | "O" | "T" | "S" | "Z" | "J" | "L";
 
+export interface QueuePreviewItem {
+  type: PieceType;
+  colorId: number;
+}
+
 export interface QueueUpdatePayload {
-  next: PieceType[];
+  next: QueuePreviewItem[];
 }
 
 export interface HoldUpdatePayload {

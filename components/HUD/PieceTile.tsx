@@ -13,11 +13,20 @@ const TYPE_COLOR: Record<PieceType, string> = {
   L: "#FF9F45",
 };
 
-export default function PieceTile({ type, size = 56 }: { type: PieceType | null; size?: number }) {
+export default function PieceTile({
+  type,
+  size = 56,
+  color: colorOverride,
+}: {
+  type: PieceType | null;
+  size?: number;
+  /** Explicit fill (the piece's real spawn colour). Falls back to per-type colour. */
+  color?: string;
+}) {
   const cells = type ? ROTATIONS[type][0] : [];
   const dim = 4;
   const c = size / dim;
-  const color = type ? TYPE_COLOR[type] : "transparent";
+  const color = type ? (colorOverride ?? TYPE_COLOR[type]) : "transparent";
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
       {cells.map((cell, i) => (

@@ -33,14 +33,15 @@ export function applyPostFX(scene: Phaser.Scene, opts: PostFXOptions): void {
     void knobs(opts.tier).bloom;
 
     if (opts.tier !== "low") {
-      list.addVignette?.(); // subtle edge darkening so the field reads as framed
+      // Gentle, wide vignette — frames the field without darkening the play area.
+      const vig = list.addVignette?.() as { radius?: number; strength?: number } | undefined;
+      if (vig) {
+        vig.radius = 0.92; // darkening starts far out toward the corners
+        vig.strength = 0.28; // light touch
+      }
     }
-
-    // Per-level color grade: gentle contrast/saturation lift.
-    const cm = list.addColorMatrix?.();
-    const grade = cm as { contrast?: (v: number) => void; saturate?: (v: number) => void } | undefined;
-    grade?.contrast?.(0.06);
-    grade?.saturate?.(0.1);
+    // No camera color-grade: leave block/background brightness untouched so the
+    // scene stays bright (an over-eager grade crushed it to black before).
   } catch {
     // FX are non-essential; ignore any controller API mismatch.
   }

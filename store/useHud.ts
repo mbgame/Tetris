@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { GamePhase, PieceType } from "@/game/state/EventNames";
+import type { GamePhase, PieceType, QueuePreviewItem } from "@/game/state/EventNames";
 
 /** Live mirror of in-game state for the React HUD. Not persisted. */
 interface HudStore {
@@ -13,7 +13,7 @@ interface HudStore {
   linesToTarget: number;
   combo: number;
   b2b: number;
-  next: PieceType[];
+  next: QueuePreviewItem[];
   hold: PieceType | null;
   canHold: boolean;
   set: (p: Partial<HudStore>) => void;

@@ -2,11 +2,12 @@ import { describe, it, expect } from "vitest";
 import { PieceQueue } from "@/game/core/PieceQueue";
 
 describe("PieceQueue", () => {
-  it("previews the next pieces matching the spawn order", () => {
+  it("previews the next pieces (type + colour) matching the spawn order", () => {
     const q = new PieceQueue(4, { mode: "weighted" }, 1);
     const preview = q.preview(3);
     const first = q.spawnNext();
-    expect(first.type).toBe(preview[0]);
+    expect(first.type).toBe(preview[0].type);
+    expect(first.colorId).toBe(preview[0].colorId); // colour matches preview exactly
   });
 
   it("first hold stores current type and returns a new piece", () => {
