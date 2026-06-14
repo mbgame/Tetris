@@ -36,6 +36,53 @@ export class BlockRenderer {
 
     this.boardLayer = scene.add.group();
     this.pieceLayer = scene.add.group();
+
+    this.buildWell();
+  }
+
+  /**
+   * Draw the play-field "well": a recessed panel plus solid textured walls on the
+   * left, right and floor so the player can see the boundary they can't move past.
+   */
+  private buildWell(): void {
+    const cell = this.cell;
+    const fieldW = cell * WIDTH;
+    const fieldH = cell * VISIBLE;
+    const x = this.originX;
+    const y = this.originY;
+    const wall = Math.max(8, Math.floor(cell * 0.45));
+
+    const g = this.scene.add.graphics().setDepth(-5);
+
+    // recessed play area so the field reads as distinct from the background
+    g.fillStyle(0x000000, 0.4);
+    g.fillRect(x, y, fieldW, fieldH);
+
+    // helper: one textured wall bar (bevel + brick notches)
+    const drawWall = (wx: number, wy: number, ww: number, wh: number, vertical: boolean) => {
+      g.fillStyle(0x2b303b, 1);
+      g.fillRect(wx, wy, ww, wh);
+      // top/left highlight, bottom/right shadow
+      g.fillStyle(0xffffff, 0.12);
+      g.fillRect(wx, wy, vertical ? ww : ww, vertical ? 3 : 3);
+      g.fillStyle(0x000000, 0.35);
+      g.fillRect(wx, wy + wh - 3, ww, 3);
+      // notches every cell so it reads as stacked blocks / brick
+      g.fillStyle(0x000000, 0.25);
+      if (vertical) {
+        for (let i = 1; i * cell < wh; i++) g.fillRect(wx, wy + i * cell - 1, ww, 2);
+      } else {
+        for (let i = 1; i * cell < ww; i++) g.fillRect(wx + i * cell - 1, wy, 2, wh);
+      }
+    };
+
+    drawWall(x - wall, y, wall, fieldH + wall, true); // left wall
+    drawWall(x + fieldW, y, wall, fieldH + wall, true); // right wall
+    drawWall(x - wall, y + fieldH, fieldW + wall * 2, wall, false); // floor
+
+    // thin inner edge highlight around the opening
+    g.lineStyle(2, 0x4fd1c5, 0.35);
+    g.strokeRect(x, y, fieldW, fieldH);
   }
 
   gridToPixel(col: number, row: number): { x: number; y: number } {

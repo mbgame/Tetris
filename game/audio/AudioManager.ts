@@ -12,6 +12,21 @@ const MAX_VOICES = 8;
 const CROSSFADE_MS = 800;
 const DUCK_MS = 250;
 
+// ── BGM score ──────────────────────────────────────────────────────────────
+const BGM_LEVEL = 0.55;        // music group base gain
+const PAD_LEVEL = 0.1;         // sustained chord pad
+const LOOKAHEAD_MS = 25;       // scheduler tick
+const SCHEDULE_AHEAD = 0.12;   // seconds queued ahead of the clock
+const STEPS_PER_BAR = 16;      // 16th-note resolution
+
+/** Epic minor loop i–VI–III–VII (Aeolian), semitone offsets from the root. */
+const PROGRESSION: { bass: number; triad: number[] }[] = [
+  { bass: 0, triad: [0, 3, 7] },   // i
+  { bass: -4, triad: [-4, 0, 3] }, // VI
+  { bass: 3, triad: [3, 7, 10] },  // III
+  { bass: -2, triad: [-2, 2, 5] }, // VII
+];
+
 /**
  * Web Audio engine: master → {music, sfx, ambience} gain buses (docs/04 §1).
  * SFX are synthesized procedurally (no audio assets), BGM is a per-theme pad
@@ -33,9 +48,22 @@ export class AudioManager {
     try { v.stop(); } catch { /* already stopped */ }
   });
 
-  private bgmGain?: GainNode; // current track gain (under musicBus)
-  private bgmNodes: AudioScheduledSourceNode[] = [];
+  // BGM is a layered, sequenced score (pad + sub-bass pulse + arp) driven by a
+  // lookahead scheduler, not a static drone. bgmGain is the persistent music
+  // group (pause/duck control point); padGain crossfades on theme change.
+  private bgmGain?: GainNode;   // persistent group under musicBus
+  private seqGain?: GainNode;   // bass + arp layer (persistent, under bgmGain)
+  private padGain?: GainNode;   // per-theme sustained chord pad (crossfaded)
+  private padOscs: OscillatorNode[] = [];
   private currentTheme = "dawn";
+  private currentLevel = 1;
+
+  // sequencer state
+  private seqTimer?: ReturnType<typeof setInterval>;
+  private seqStep = 0;
+  private nextStepTime = 0;
+  private bpm = 92;
+  private root = 130.8;
 
   constructor() {
     bus.on(EventName.Sfx, this.onSfx);
@@ -206,58 +234,155 @@ export class AudioManager {
   // ── BGM (per-theme pad) + crossfade ──────────────────────────────────────
   private onLevelChange = (p: LevelChangePayload) => {
     this.currentTheme = p.theme;
+    this.currentLevel = p.level;
     if (this.started) this.playBgm(p.theme);
   };
 
-  /** Crossfade to a new themed pad. */
+  /** (Re)start the layered score for a theme: crossfade a new chord pad, retune
+   *  the root/tempo, and ensure the sequencer (bass + arp) is running. */
   private playBgm(theme: string): void {
     if (!this.ctx || !this.musicBus) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    // fade out + stop the old track
-    if (this.bgmGain) {
-      const old = this.bgmGain;
-      const oldNodes = this.bgmNodes;
-      old.gain.cancelScheduledValues(t);
-      old.gain.setValueAtTime(old.gain.value, t);
-      old.gain.linearRampToValueAtTime(0, t + CROSSFADE_MS / 1000);
-      oldNodes.forEach((n) => { try { n.stop(t + CROSSFADE_MS / 1000 + 0.05); } catch { /* */ } });
+    this.root = themeRoot(theme);
+    this.bpm = themeBpm(theme) + Math.min(this.currentLevel, 18); // ramps with level
+
+    // persistent group + sequencer layer (first run only)
+    if (!this.bgmGain) {
+      this.bgmGain = ctx.createGain();
+      this.bgmGain.gain.value = BGM_LEVEL;
+      this.bgmGain.connect(this.musicBus);
+    }
+    if (!this.seqGain) {
+      this.seqGain = ctx.createGain();
+      this.seqGain.gain.value = 1;
+      this.seqGain.connect(this.bgmGain);
     }
 
-    // build new pad: 3 detuned saws through a lowpass, slow LFO on cutoff
-    const trackGain = ctx.createGain();
-    trackGain.gain.setValueAtTime(0, t);
-    trackGain.gain.linearRampToValueAtTime(0.18, t + CROSSFADE_MS / 1000);
-    trackGain.connect(this.musicBus);
+    // crossfade out the old pad
+    if (this.padGain) {
+      const oldGain = this.padGain;
+      const oldOscs = this.padOscs;
+      oldGain.gain.cancelScheduledValues(t);
+      oldGain.gain.setValueAtTime(oldGain.gain.value, t);
+      oldGain.gain.linearRampToValueAtTime(0, t + CROSSFADE_MS / 1000);
+      oldOscs.forEach((n) => { try { n.stop(t + CROSSFADE_MS / 1000 + 0.05); } catch { /* */ } });
+    }
+
+    // new pad: 3 detuned saws → lowpass (slow LFO on cutoff) → fade-in gain.
+    // Oscillators are retuned to each chord by the sequencer (setChordPad).
+    const padGain = ctx.createGain();
+    padGain.gain.setValueAtTime(0, t);
+    padGain.gain.linearRampToValueAtTime(PAD_LEVEL, t + CROSSFADE_MS / 1000);
+    padGain.connect(this.bgmGain);
 
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.value = 700;
-    lp.connect(trackGain);
+    lp.frequency.value = 800;
+    lp.connect(padGain);
 
-    const root = themeRoot(theme);
-    const nodes: AudioScheduledSourceNode[] = [];
-    for (const [mult, detune] of [[1, -6], [1.5, 0], [2, 6]] as const) {
+    const oscs: OscillatorNode[] = [];
+    for (let i = 0; i < 3; i++) {
       const osc = ctx.createOscillator();
       osc.type = "sawtooth";
-      osc.frequency.value = root * mult;
-      osc.detune.value = detune;
+      osc.detune.value = (i - 1) * 8; // slight spread for width
       osc.connect(lp);
       osc.start(t);
-      nodes.push(osc);
+      oscs.push(osc);
     }
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
     lfo.frequency.value = 0.08;
-    lfoGain.gain.value = 250;
+    lfoGain.gain.value = 280;
     lfo.connect(lfoGain).connect(lp.frequency);
     lfo.start(t);
-    nodes.push(lfo);
+    oscs.push(lfo);
 
-    this.bgmGain = trackGain;
-    this.bgmNodes = nodes;
+    this.padGain = padGain;
+    this.padOscs = oscs;
+    this.setChordPad(0, t); // tune to first chord
+
+    if (this.seqTimer === undefined) {
+      this.seqStep = 0;
+      this.nextStepTime = t + 0.08;
+      this.seqTimer = setInterval(() => this.scheduler(), LOOKAHEAD_MS);
+    }
     this.startAmbience(theme);
+  }
+
+  /** Lookahead scheduler: queue any 16th-note steps falling inside the window. */
+  private scheduler(): void {
+    if (!this.ctx || this.ctx.state !== "running") return;
+    while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD) {
+      this.scheduleStep(this.seqStep, this.nextStepTime);
+      this.nextStepTime += 15 / this.bpm; // one 16th note = (60/bpm)/4
+      this.seqStep++;
+    }
+  }
+
+  /** Emit the layers for a single 16th-note step at absolute time `t`. */
+  private scheduleStep(step: number, t: number): void {
+    const s = step % STEPS_PER_BAR;
+    const chordIdx = Math.floor(step / STEPS_PER_BAR) % PROGRESSION.length;
+    const chord = PROGRESSION[chordIdx];
+
+    if (s === 0) this.setChordPad(chordIdx, t); // retune pad at each bar
+
+    // sub-bass: punchy root pulse on every beat (octave below), louder on the "1"
+    if (s % 4 === 0) {
+      const accent = s === 0 ? 1 : 0.7;
+      this.bassNote(this.semi(chord.bass) / 2, t, accent);
+    }
+    // arpeggio: plucky 8th notes climbing the chord, an octave+ up → "epic" sparkle
+    if (s % 2 === 0) {
+      const arp = chord.triad;
+      const beat = s / 2; // 0..7
+      const note = arp[beat % arp.length] + (beat >= arp.length ? 12 : 0);
+      this.arpNote(this.semi(note) * 2, t);
+    }
+  }
+
+  /** semitone offset from current root → frequency. */
+  private semi(n: number): number {
+    return this.root * Math.pow(2, n / 12);
+  }
+
+  /** Retune the 3 pad saws to a chord triad (smooth glide, anti-zipper). */
+  private setChordPad(chordIdx: number, t: number): void {
+    const triad = PROGRESSION[chordIdx].triad;
+    this.padOscs.slice(0, 3).forEach((osc, i) => {
+      osc.frequency.setTargetAtTime(this.semi(triad[i % triad.length]), t, 0.08);
+    });
+  }
+
+  private bassNote(freq: number, t: number, accent: number): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 2, t);          // quick pitch drop = thump
+    osc.frequency.exponentialRampToValueAtTime(freq, t + 0.04);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5 * accent, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    osc.connect(g).connect(this.seqGain!);
+    osc.start(t);
+    osc.stop(t + 0.36);
+  }
+
+  private arpNote(freq: number, t: number): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.14, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    osc.connect(g).connect(this.seqGain!);
+    osc.start(t);
+    osc.stop(t + 0.26);
   }
 
   // ── ambience (optional per-scene low loop, 6.5) ──────────────────────────
@@ -304,17 +429,17 @@ export class AudioManager {
     const cur = this.bgmGain.gain.value;
     this.bgmGain.gain.cancelScheduledValues(t);
     this.bgmGain.gain.setValueAtTime(cur, t);
-    this.bgmGain.gain.linearRampToValueAtTime(cur * 0.85, t + 0.04);
-    this.bgmGain.gain.linearRampToValueAtTime(cur, t + DUCK_MS / 1000);
+    this.bgmGain.gain.linearRampToValueAtTime(cur * 0.7, t + 0.04);
+    this.bgmGain.gain.linearRampToValueAtTime(BGM_LEVEL, t + DUCK_MS / 1000);
   }
 
   private onState = (p: { state: string }) => {
     if (!this.ctx || !this.bgmGain) return;
     const t = this.ctx.currentTime;
     if (p.state === "PAUSED") {
-      this.bgmGain.gain.setTargetAtTime(0.05, t, 0.05); // duck, don't stop
+      this.bgmGain.gain.setTargetAtTime(BGM_LEVEL * 0.25, t, 0.05); // duck, don't stop
     } else if (p.state === "PLAYING") {
-      this.bgmGain.gain.setTargetAtTime(0.18, t, 0.05);
+      this.bgmGain.gain.setTargetAtTime(BGM_LEVEL, t, 0.05);
     } else if (p.state === "LEVEL_COMPLETE") {
       this.playSfx("levelup");
     } else if (p.state === "GAME_OVER") {
@@ -335,6 +460,7 @@ export class AudioManager {
   };
 
   dispose(): void {
+    if (this.seqTimer !== undefined) { clearInterval(this.seqTimer); this.seqTimer = undefined; }
     bus.off(EventName.Sfx, this.onSfx);
     bus.off(EventName.SettingsChange, this.onSettings);
     bus.off(EventName.LevelChange, this.onLevelChange);
@@ -352,4 +478,13 @@ function themeRoot(theme: string): number {
     forge: 87.3, aurora: 174.6, sky: 196, void: 73.4, prism: 220,
   };
   return roots[theme] ?? 130.8;
+}
+
+/** Per-theme base tempo (BPM); the level bump is added on top in playBgm. */
+function themeBpm(theme: string): number {
+  const bpm: Record<string, number> = {
+    dawn: 88, neon: 104, crystal: 96, dunes: 84, ocean: 80,
+    forge: 100, aurora: 92, sky: 98, void: 76, prism: 108,
+  };
+  return bpm[theme] ?? 92;
 }
