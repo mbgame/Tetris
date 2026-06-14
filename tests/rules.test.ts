@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Board, WIDTH, HEIGHT, EMPTY } from "@/game/core/Board";
-import { getClearableRows, isRowMono, getTelegraphRows } from "@/game/core/rules";
+import { getClearableRows, isRowMono, getTelegraphRows, getColorSquares } from "@/game/core/rules";
 
 const fillRow = (b: Board, y: number, colors: number[]) => {
   for (let x = 0; x < WIDTH; x++) b.set(x, y, colors[x]);
@@ -74,6 +74,49 @@ describe("rules — getTelegraphRows", () => {
     twoGap[1] = 0; twoGap[5] = 0;
     fillRow(b, HEIGHT - 2, twoGap);
     expect(getTelegraphRows(b)).toEqual([]);
+  });
+});
+
+describe("rules — getColorSquares (3×3 assist clear)", () => {
+  const fillSquare = (b: Board, x0: number, y0: number, color: number) => {
+    for (let y = y0; y < y0 + 3; y++) for (let x = x0; x < x0 + 3; x++) b.set(x, y, color);
+  };
+
+  it("detects a 3×3 mono square (9 cells)", () => {
+    const b = new Board();
+    fillSquare(b, 2, HEIGHT - 3, 4);
+    const sq = getColorSquares(b);
+    expect(sq.count).toBe(1);
+    expect(sq.cells).toHaveLength(9);
+    expect(sq.cells.every((c) => c.colorId === 4)).toBe(true);
+  });
+
+  it("a 3×3 with one different cell does not match", () => {
+    const b = new Board();
+    fillSquare(b, 2, HEIGHT - 3, 4);
+    b.set(3, HEIGHT - 2, 1); // center differs
+    expect(getColorSquares(b).count).toBe(0);
+  });
+
+  it("merges overlapping squares' cells", () => {
+    const b = new Board();
+    // 3×4 block of one color → two overlapping 3×3 squares, 12 unique cells
+    for (let y = HEIGHT - 4; y < HEIGHT; y++) for (let x = 0; x < 3; x++) b.set(x, y, 5);
+    const sq = getColorSquares(b);
+    expect(sq.count).toBe(2);
+    expect(sq.cells).toHaveLength(12);
+  });
+});
+
+describe("Board.removeCells + collapseColumns", () => {
+  it("removes cells and compacts the column", () => {
+    const b = new Board();
+    b.set(0, HEIGHT - 1, 1); // bottom
+    b.set(0, HEIGHT - 3, 2); // floating above a gap
+    b.removeCells([{ x: 0, y: HEIGHT - 1 }]); // remove bottom
+    b.collapseColumns();
+    expect(b.get(0, HEIGHT - 1)).toBe(2); // floating block fell to floor
+    expect(b.get(0, HEIGHT - 3)).toBe(0);
   });
 });
 

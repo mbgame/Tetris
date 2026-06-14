@@ -13,6 +13,7 @@
  */
 export const BASE_LINE: Record<number, number> = { 1: 100, 2: 300, 3: 500, 4: 800 };
 export const COLOR_BONUS = 1.5;
+export const SQUARE_BASE = 250; // per 3×3 mono square
 const COMBO_UNIT = 50;
 const B2B_MULTIPLIER = 1.5;
 
@@ -46,6 +47,16 @@ export class Scorer {
     this._score += gained;
     this.lastClearMulti = isMulti;
     return { gained, combo: this.combo, b2b };
+  }
+
+  /** Apply a 3×3 mono-square clear of `count` squares at the given level. */
+  square(count: number, level: number): ClearResult {
+    this.combo += 1;
+    const comboBonus = COMBO_UNIT * Math.max(0, this.combo) * level;
+    const gained = Math.floor(SQUARE_BASE * count * level * COLOR_BONUS) + comboBonus;
+    this._score += gained;
+    this.lastClearMulti = count >= 2;
+    return { gained, combo: this.combo, b2b: false };
   }
 
   /** A lock that cleared nothing breaks the combo chain. */

@@ -90,6 +90,15 @@ const FOOTER = `
 void main(){
   vec2 uv = gl_FragCoord.xy / uResolution;
   vec3 col = scene(uv, uTime);
+  // animated diagonal light sweep + soft pulsing glow for extra life
+  float sweep = 0.07 * sin((uv.x + uv.y) * 4.0 - uTime * 0.8);
+  float pulse = 0.05 * sin(uTime * 0.5);
+  col += sweep + pulse;
+  // gentle radial vignette-glow that breathes
+  float d = distance(uv, vec2(0.5, 0.42));
+  col += (0.10 + 0.04 * sin(uTime * 0.7)) * (1.0 - smoothstep(0.0, 0.8, d));
+  col *= 1.25;                  // overall brightness lift
+  col = pow(max(col, 0.0), vec3(0.9)); // slight gamma brighten + punch
   col *= (1.0 - uDim);
   gl_FragColor = vec4(col, 1.0);
 }

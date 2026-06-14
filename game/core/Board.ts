@@ -98,6 +98,42 @@ export class Board {
     return cleared;
   }
 
+  /** Empty the given cells (returns their prior position+color for VFX). */
+  removeCells(cells: { x: number; y: number }[]): ClearedCell[] {
+    const removed: ClearedCell[] = [];
+    for (const { x, y } of cells) {
+      const colorId = this.get(x, y);
+      if (colorId !== EMPTY) {
+        removed.push({ x, y, colorId });
+        this.set(x, y, EMPTY);
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Per-column gravity: compact each column so floating cells fall to the bottom.
+   * Used after a 3×3 square clear (which leaves holes, unlike full-row clears).
+   * Returns each moved cell's from/to for settle animation.
+   */
+  collapseColumns(): { x: number; fromY: number; toY: number; colorId: number }[] {
+    const moves: { x: number; fromY: number; toY: number; colorId: number }[] = [];
+    for (let x = 0; x < WIDTH; x++) {
+      let write = HEIGHT - 1;
+      for (let y = HEIGHT - 1; y >= 0; y--) {
+        const c = this.grid[y][x];
+        if (c === EMPTY) continue;
+        if (write !== y) {
+          this.grid[write][x] = c;
+          this.grid[y][x] = EMPTY;
+          moves.push({ x, fromY: y, toY: write, colorId: c });
+        }
+        write--;
+      }
+    }
+    return moves;
+  }
+
   /**
    * Push the stack up by one row and insert `newBottom` at the floor (rising
    * garbage hazard). Returns true if the top row overflowed (had blocks shoved

@@ -39,6 +39,15 @@ describe("Scorer", () => {
     expect(c3.gained).toBe(150);
   });
 
+  it("3×3 square clear scores and advances combo", () => {
+    const s = new Scorer();
+    const r = s.square(1, 1); // floor(250*1*1.5)=375, combo 0
+    expect(r.gained).toBe(375);
+    expect(r.combo).toBe(0);
+    const r2 = s.square(2, 1); // floor(250*2*1.5)=750 + combo(50*1)=50 = 800
+    expect(r2.gained).toBe(800);
+  });
+
   it("soft/hard drop points accumulate", () => {
     const s = new Scorer();
     s.softDrop(5); // +5

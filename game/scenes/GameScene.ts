@@ -3,7 +3,7 @@ import { Board, WIDTH, HEIGHT, type ClearedCell } from "../core/Board";
 import { pieceCells, type ActivePiece } from "../core/Piece";
 import { PieceQueue } from "../core/PieceQueue";
 import { tryRotate, type RotateDir } from "../core/srs";
-import { getClearableRows, getTelegraphRows, type ClearMode } from "../core/rules";
+import { getClearableRows, getTelegraphRows, getColorSquares, type ClearMode } from "../core/rules";
 import { Scorer } from "../core/scoring";
 import { GameState } from "../core/GameState";
 import { LEVEL_COUNT, getLevel, type LevelConfig } from "../levels/levels";
@@ -12,6 +12,7 @@ import { GhostPiece, dropPosition } from "../render/GhostPiece";
 import { SandSystem } from "../render/SandSystem";
 import { paletteFromColors } from "../render/palette";
 import { DissolvePipeline } from "../fx/DissolvePipeline";
+import { SquareBurst } from "../fx/SquareBurst";
 import { applyPostFX } from "../fx/PostFX";
 import { InputController } from "../input/InputController";
 import { resolveTier } from "../perf/benchmark";
@@ -30,6 +31,7 @@ export class GameScene extends Phaser.Scene {
   private ghost!: GhostPiece;
   private sand!: SandSystem;
   private dissolve!: DissolvePipeline;
+  private squareBurst!: SquareBurst;
   private scorer!: Scorer;
   private fsm!: GameState;
 
@@ -188,6 +190,10 @@ export class GameScene extends Phaser.Scene {
       this.palette,
       { obtainBlock: () => this.blocks.obtainBlock(), releaseBlock: (i) => this.blocks.releaseBlock(i) },
     );
+    this.squareBurst = new SquareBurst(this, this.blocks.cell, (c, r) => this.blocks.gridToPixel(c, r), this.palette, {
+      obtainBlock: () => this.blocks.obtainBlock(),
+      releaseBlock: (i) => this.blocks.releaseBlock(i),
+    });
     applyPostFX(this, { bloom: true, tier: this.tier, reduceMotion: this.reduceMotion });
     // background reads tier on (re)build → re-emit its current level theme
     if (this.level) {
@@ -252,6 +258,10 @@ export class GameScene extends Phaser.Scene {
     const toPixel = (c: number, r: number) => this.blocks.gridToPixel(c, r);
     this.sand = new SandSystem(this, this.blocks.cell, toPixel, this.tier, this.palette);
     this.dissolve = new DissolvePipeline(this, this.blocks.cell, toPixel, this.tier, this.reduceMotion, this.palette, {
+      obtainBlock: () => this.blocks.obtainBlock(),
+      releaseBlock: (i) => this.blocks.releaseBlock(i),
+    });
+    this.squareBurst = new SquareBurst(this, this.blocks.cell, toPixel, this.palette, {
       obtainBlock: () => this.blocks.obtainBlock(),
       releaseBlock: (i) => this.blocks.releaseBlock(i),
     });
@@ -429,12 +439,77 @@ export class GameScene extends Phaser.Scene {
     bus.emit(EventName.Sfx, { name: "lock" });
     this.board.lock(this.active);
     const rows = getClearableRows(this.board, this.clearMode);
-    if (rows.length === 0) {
-      this.scorer.lockWithoutClear();
-      this.redraw();
-      this.spawn();
-    } else {
+    if (rows.length > 0) {
       this.startLineClear(rows);
+      return;
+    }
+    const sq = getColorSquares(this.board);
+    if (sq.cells.length > 0) {
+      this.startSquareClear(sq);
+      return;
+    }
+    this.scorer.lockWithoutClear();
+    this.redraw();
+    this.spawn();
+  }
+
+  /**
+   * 3×3 mono-square clear (assist mechanic): remove the matched cells with a
+   * burst effect, collapse columns, score + progress, then resume.
+   */
+  private startSquareClear(sq: { cells: { x: number; y: number; colorId: number }[]; count: number }) {
+    this.clearing = true;
+    this.cancelLock();
+    this.fsm.transition("LINE_CLEAR");
+
+    const removed = this.board.removeCells(sq.cells);
+
+    // survivors snapshot (pre-collapse) + their post-collapse target rows
+    const survivors: { x: number; y: number; colorId: number }[] = [];
+    this.board.forEachCell((x, y, colorId) => survivors.push({ x, y, colorId }));
+    const moves = this.board.collapseColumns();
+    const toY = new Map<string, number>();
+    for (const m of moves) toY.set(`${m.x},${m.fromY}`, m.toY);
+
+    const res = this.scorer.square(sq.count, this.level.id);
+    this.monoLines += sq.count; // squares progress the level too (easier)
+    bus.emit(EventName.ComboUpdate, { combo: res.combo, b2b: 0 });
+    bus.emit(EventName.Sfx, { name: "clear", intensity: 3 });
+    this.emitScore();
+
+    this.blocks.clearBoard();
+    this.blocks.clearPiece();
+    this.ghost.clear();
+
+    const imgs = survivors.map((s) => ({
+      img: this.blocks.makeBlock(s.x, s.y, s.colorId),
+      x: s.x,
+      target: toY.get(`${s.x},${s.y}`) ?? s.y,
+    }));
+
+    this.squareBurst.run(removed, () => {});
+    this.settleTo(imgs, () => {
+      this.blocks.renderBoard(this.board);
+      this.clearing = false;
+      if (this.monoLines >= this.level.targetLines) this.levelComplete();
+      else {
+        this.fsm.transition("PLAYING");
+        this.spawn();
+      }
+    });
+  }
+
+  private settleTo(
+    imgs: { img: Phaser.GameObjects.Image; x: number; target: number }[],
+    onDone: () => void,
+  ) {
+    let remaining = imgs.length;
+    if (remaining === 0) return onDone();
+    const finish = () => { if (--remaining === 0) onDone(); };
+    for (const { img, x, target } of imgs) {
+      const dest = this.blocks.gridToPixel(x, target);
+      this.tweens.add({ targets: img, x: dest.x, y: dest.y, duration: SETTLE_MS + 60, ease: "Quad.easeIn",
+        onComplete: () => { this.blocks.releaseBlock(img); finish(); } });
     }
   }
 
@@ -457,6 +532,12 @@ export class GameScene extends Phaser.Scene {
       if (rowSet.has(y)) return;
       survivors.push({ x, y, colorId, drop: rows.filter((r) => r > y).length });
     });
+
+    // extra punch on bigger clears
+    if (this.shakeAllowed) {
+      if (rows.length >= 2) this.cameras.main.flash(120, 255, 255, 255, false);
+      this.cameras.main.shake(60 + rows.length * 20, 0.003 * rows.length);
+    }
 
     // scoring + progression
     const res = this.scorer.clear(rows.length, this.level.id);

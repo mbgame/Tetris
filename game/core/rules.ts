@@ -1,4 +1,4 @@
-import { Board, WIDTH, HEIGHT, EMPTY } from "./Board";
+import { Board, WIDTH, HEIGHT, EMPTY, type ClearedCell } from "./Board";
 
 /**
  * Clear-rule strategy — pure logic, NO Phaser imports. This encodes THE core
@@ -27,6 +27,47 @@ export function getClearableRows(board: Board, mode: ClearMode): number[] {
     if (mode === "classic" || isRowMono(board, y)) rows.push(y);
   }
   return rows;
+}
+
+export interface SquareMatch {
+  /** unique cells covered by all matching 3×3 squares (overlaps merged) */
+  cells: ClearedCell[];
+  /** number of distinct 3×3 mono squares found (for scoring) */
+  count: number;
+}
+
+/**
+ * Find every 3×3 block of one solid color (the "assist" clear that makes color
+ * planning easier). Overlapping squares merge their cells. Pure logic.
+ */
+export function getColorSquares(board: Board): SquareMatch {
+  const seen = new Map<string, ClearedCell>();
+  let count = 0;
+  for (let y = 0; y <= HEIGHT - 3; y++) {
+    for (let x = 0; x <= WIDTH - 3; x++) {
+      const color = board.get(x, y);
+      if (color === EMPTY) continue;
+      let mono = true;
+      for (let dy = 0; dy < 3 && mono; dy++) {
+        for (let dx = 0; dx < 3; dx++) {
+          if (board.get(x + dx, y + dy) !== color) {
+            mono = false;
+            break;
+          }
+        }
+      }
+      if (!mono) continue;
+      count++;
+      for (let dy = 0; dy < 3; dy++) {
+        for (let dx = 0; dx < 3; dx++) {
+          const cx = x + dx;
+          const cy = y + dy;
+          seen.set(`${cx},${cy}`, { x: cx, y: cy, colorId: color });
+        }
+      }
+    }
+  }
+  return { cells: [...seen.values()], count };
 }
 
 /**
