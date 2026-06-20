@@ -171,6 +171,29 @@ const MATERIALS: Draw[] = [
 
 export const MATERIAL_COUNT = MATERIALS.length;
 
+/** Clear-burst animation style + sfx variant, paired to each material index. */
+export type ClearStyle = "pop" | "shatter" | "spark" | "crumble" | "zap" | "shimmer";
+export interface MaterialFx {
+  style: ClearStyle;
+  sfx: string;
+}
+
+export const MATERIAL_FX: MaterialFx[] = [
+  { style: "pop", sfx: "chime" }, // 0 glossy
+  { style: "shatter", sfx: "glass" }, // 1 glass
+  { style: "spark", sfx: "metal" }, // 2 brushed metal
+  { style: "crumble", sfx: "stone" }, // 3 stone
+  { style: "pop", sfx: "chime" }, // 4 diagonal stripes
+  { style: "pop", sfx: "chime" }, // 5 studded grid
+  { style: "zap", sfx: "electric" }, // 6 circuit
+  { style: "shimmer", sfx: "soft" }, // 7 carbon weave
+  { style: "shimmer", sfx: "crystal" }, // 8 faceted gem
+];
+
+export function fxForLevel(levelId: number): MaterialFx {
+  return MATERIAL_FX[(levelId - 1) % MATERIAL_FX.length];
+}
+
 /** Generate (once) all material textures; returns their texture keys in order. */
 export function ensureMaterials(scene: Phaser.Scene): string[] {
   const keys: string[] = [];
