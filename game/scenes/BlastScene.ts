@@ -76,6 +76,7 @@ export class BlastScene extends Phaser.Scene {
   private hintGfx?: Phaser.GameObjects.Graphics;
   private hintTween?: Phaser.Tweens.Tween;
   private hintPiece?: TrayPiece;
+  private stuckText?: Phaser.GameObjects.Text; // "no moves — use a power-up" nudge
 
   private active = false; // owns the session (drives bus emissions)
   private running = false; // drag input enabled
@@ -192,6 +193,7 @@ export class BlastScene extends Phaser.Scene {
     this.hintTween = undefined;
     this.hintPiece = undefined;
     this.hintActive = false;
+    this.stuckText = undefined;
     this.fx = new BlastFx(this, this.palette, this.reduceMotion, this.blockTex);
 
     this.fsm = new GameState("MENU");
@@ -590,7 +592,58 @@ export class BlastScene extends Phaser.Scene {
     const remaining = this.tray.filter((t): t is TrayPiece => t !== null);
     if (remaining.length === 0) return;
     const anyFits = remaining.some((p) => this.board.fitsAnywhere(p.shape.cells));
-    if (!anyFits) this.gameOver();
+    if (anyFits) {
+      this.clearStuck();
+      return;
+    }
+    // Nothing fits — only a loss if no affordable power-up can rescue the board.
+    if (this.canRescue()) {
+      this.promptStuck();
+      return;
+    }
+    this.clearStuck();
+    this.gameOver();
+  }
+
+  /** Could an affordable power-up plausibly open up a move? */
+  private canRescue(): boolean {
+    const hasEmpty = this.board.countFilled() < this.board.size * this.board.size;
+    // hammer / clear-row free board space (work even on a full board); refresh /
+    // rotate only help when there's somewhere for a new/rotated piece to land.
+    if (this.coins >= POWERUP_COST.hammer) return true;
+    if (this.coins >= POWERUP_COST.bomb) return true;
+    if (hasEmpty && this.coins >= POWERUP_COST.refresh) return true;
+    if (hasEmpty && this.coins >= POWERUP_COST.rotate) return true;
+    return false;
+  }
+
+  /** Persistent nudge while stuck-but-rescuable: spend a power-up to continue. */
+  private promptStuck() {
+    if (this.stuckText) return;
+    bus.emit(EventName.Sfx, { name: "telegraph" });
+    const cx = this.originX + (this.board.size * this.cell) / 2;
+    const cy = this.originY + (this.board.size * this.cell) / 2;
+    this.stuckText = this.add
+      .text(cx, cy, "No moves left!\nUse a power-up 👉", {
+        fontFamily: "monospace",
+        fontSize: "30px",
+        color: "#fca5a5",
+        fontStyle: "bold",
+        stroke: "#000000",
+        strokeThickness: 5,
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(110);
+    this.tweens.add({ targets: this.stuckText, alpha: { from: 0.55, to: 1 }, duration: 500, yoyo: true, repeat: -1 });
+  }
+
+  private clearStuck() {
+    if (this.stuckText) {
+      this.tweens.killTweensOf(this.stuckText);
+      this.stuckText.destroy();
+      this.stuckText = undefined;
+    }
   }
 
   // ── power-ups ─────────────────────────────────────────────────────────────

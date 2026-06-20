@@ -222,3 +222,36 @@ test("rotate power-up arms and spins a tray piece", async ({ page }) => {
   expect(res.armed).toBe(false); // arm consumed
   if (!res.square) expect(res.changed).toBe(true); // non-square pieces visibly rotate
 });
+
+test("no-move board defers the loss while a power-up can rescue", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByText("Calm Start").click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__?.scene.getScene("BlastScene")?.["running"] === true,
+    { timeout: 12000 },
+  );
+
+  // fill the whole board so nothing can be placed; with coins, it must NOT lose
+  const stuck = await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    const b = s["board"];
+    for (let y = 0; y < b.size; y++) for (let x = 0; x < b.size; x++) b.set(x, y, 1);
+    s["coins"] = 50;
+    s["emitCoins"]();
+    s["checkGameOver"]();
+    return { phase: s["fsm"].state, hasNudge: !!s["stuckText"] };
+  });
+  expect(stuck.phase).toBe("PLAYING"); // deferred, not lost
+  expect(stuck.hasNudge).toBe(true);
+
+  // broke + still no move → now it's a real game over
+  const lost = await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    s["coins"] = 0;
+    s["emitCoins"]();
+    s["checkGameOver"]();
+    return s["fsm"].state;
+  });
+  expect(lost).toBe("GAME_OVER");
+});
