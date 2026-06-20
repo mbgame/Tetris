@@ -14,8 +14,11 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create() {
-    // Order matters: BackgroundScene added first → renders behind GameScene.
+    // Order matters: BackgroundScene added first → renders behind play scenes.
+    // Both gameplay scenes run concurrently but stay dormant until their start
+    // intent (mode "classic" → GameScene, "blast" → BlastScene).
     this.scene.start("BackgroundScene");
     this.scene.launch("GameScene");
+    this.scene.launch("BlastScene");
   }
 }

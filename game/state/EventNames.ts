@@ -93,6 +93,9 @@ export interface HoldUpdatePayload {
   canHold: boolean;
 }
 
+/** Which game the player chose on the landing screen. */
+export type GameMode = "classic" | "blast";
+
 export type GamePhase =
   | "BOOT"
   | "MENU"
@@ -176,7 +179,7 @@ export type GameEvents = {
   [EventName.RequestPause]: void;
   [EventName.RequestResume]: void;
   [EventName.RequestRestart]: void;
-  [EventName.RequestStartLevel]: { level: number };
+  [EventName.RequestStartLevel]: { level: number; mode?: GameMode };
   [EventName.RequestQuit]: void;
 
   [EventName.Sfx]: SfxPayload;

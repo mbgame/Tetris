@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Block Drop drag fluidity: the game canvas must own touch gestures so the
+   browser never steals a drag as page scroll / pull-to-refresh / pinch-zoom. */
+#game-root,
+#game-root canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

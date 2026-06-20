@@ -1,10 +1,11 @@
 "use client";
 
 import { create } from "zustand";
-import type { GamePhase, PieceType, QueuePreviewItem } from "@/game/state/EventNames";
+import type { GameMode, GamePhase, PieceType, QueuePreviewItem } from "@/game/state/EventNames";
 
 /** Live mirror of in-game state for the React HUD. Not persisted. */
 interface HudStore {
+  mode: GameMode;
   phase: GamePhase;
   score: number;
   level: number;
@@ -20,6 +21,7 @@ interface HudStore {
 }
 
 export const useHud = create<HudStore>((set) => ({
+  mode: "classic",
   phase: "BOOT",
   score: 0,
   level: 1,

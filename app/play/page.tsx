@@ -1,11 +1,19 @@
 "use client";
 
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import HudBridge from "@/components/HUD/HudBridge";
 import PlayOverlay from "@/components/PlayOverlay";
+import type { GameMode } from "@/game/state/EventNames";
 
 // ssr:false keeps Phaser off the server; allowed here because this is a client component.
 const GameCanvas = dynamic(() => import("@/components/GameCanvas"), { ssr: false });
+
+function Overlay() {
+  const mode: GameMode = useSearchParams().get("mode") === "blast" ? "blast" : "classic";
+  return <PlayOverlay mode={mode} />;
+}
 
 export default function PlayPage() {
   return (
@@ -23,7 +31,9 @@ export default function PlayPage() {
       {/* bus → stores wiring (renders nothing) */}
       <HudBridge />
       {/* DOM HUD + menus on top of the canvas */}
-      <PlayOverlay />
+      <Suspense fallback={null}>
+        <Overlay />
+      </Suspense>
     </main>
   );
 }

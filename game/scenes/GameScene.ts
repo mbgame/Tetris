@@ -92,7 +92,11 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private onStartLevel = (p: { level: number }) => {
+  private sessionActive = false; // owns the session (vs. BlastScene); gates intents
+
+  private onStartLevel = (p: { level: number; mode?: string }) => {
+    if ((p.mode ?? "classic") !== "classic") return; // BlastScene handles "blast"
+    this.sessionActive = true;
     this.scorer.reset();
     this.loadLevel(p.level);
   };
@@ -115,12 +119,15 @@ export class GameScene extends Phaser.Scene {
   };
 
   private onRestart = () => {
+    if (!this.sessionActive) return;
     const id = this.level?.id ?? 1;
     this.scorer.reset();
     this.loadLevel(id);
   };
 
   private toMenu = () => {
+    if (!this.sessionActive) return;
+    this.sessionActive = false;
     this.running = false;
     this.clearing = false;
     this.gravityTimer?.remove();
