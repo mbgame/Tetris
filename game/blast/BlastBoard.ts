@@ -5,7 +5,7 @@
  * rows AND full columns clear simultaneously. A cell holds a colorId:
  * 0 = empty, >0 = filled with that color.
  */
-export const BLAST_SIZE = 8;
+export const BLAST_SIZE = 7;
 export const EMPTY = 0;
 
 export interface BlastCell {
