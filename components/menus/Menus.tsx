@@ -25,16 +25,40 @@ export function MainMenu({
   title?: string;
   subtitle?: string;
 }) {
+  const swatches = ["#4fd1c5", "#f6ad55", "#fc8181", "#68d391", "#b794f4", "#f6e05e"];
   return (
     <Overlay>
-      <Panel>
-        <h1 className="mb-1 font-mono text-4xl font-bold tracking-tight text-teal-300">{title}</h1>
-        <p className="mb-6 font-mono text-sm opacity-70">{subtitle}</p>
-        <div className="flex flex-col gap-3">
-          <Button onClick={onPlay}>Play</Button>
-          <Button variant="ghost" onClick={onSettings}>Settings</Button>
+      <div className="pointer-events-auto flex w-[min(92vw,460px)] flex-col items-center rounded-3xl bg-gradient-to-b from-zinc-900/95 to-zinc-950/95 px-8 py-10 text-center text-white shadow-2xl ring-1 ring-white/10">
+        {/* floating block accents */}
+        <div className="mb-6 flex gap-2">
+          {swatches.map((c, i) => (
+            <span
+              key={c}
+              className="h-5 w-5 animate-pulse rounded-md shadow-[0_0_12px] [animation-duration:2s]"
+              style={{ background: c, color: c, animationDelay: `${i * 150}ms` }}
+            />
+          ))}
         </div>
-      </Panel>
+
+        <h1 className="bg-gradient-to-r from-teal-300 via-fuchsia-400 to-amber-300 bg-clip-text font-mono text-5xl font-extrabold tracking-tight text-transparent drop-shadow-[0_0_25px_rgba(94,234,212,0.35)]">
+          {title}
+        </h1>
+        <p className="mb-8 mt-3 max-w-xs font-mono text-sm text-zinc-400">{subtitle}</p>
+
+        <button
+          onClick={onPlay}
+          className="pointer-events-auto group w-full rounded-2xl bg-gradient-to-r from-teal-400 to-cyan-400 px-8 py-4 font-mono text-xl font-bold text-black shadow-[0_0_30px_rgba(45,212,191,0.5)] transition hover:scale-[1.03] hover:shadow-[0_0_40px_rgba(45,212,191,0.7)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-200"
+        >
+          <span className="inline-block transition group-hover:translate-x-0.5">▶ PLAY</span>
+        </button>
+
+        <button
+          onClick={onSettings}
+          className="pointer-events-auto mt-3 w-full rounded-2xl bg-white/10 px-8 py-3 font-mono text-base font-semibold text-white ring-1 ring-white/15 transition hover:bg-white/20 active:scale-95"
+        >
+          ⚙ Settings
+        </button>
+      </div>
     </Overlay>
   );
 }
