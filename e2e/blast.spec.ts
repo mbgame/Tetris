@@ -223,6 +223,14 @@ test("rotate power-up arms and spins a tray piece", async ({ page }) => {
   if (!res.square) expect(res.changed).toBe(true); // non-square pieces visibly rotate
 });
 
+test("settings can return to the main menu (landing)", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Settings/ }).click();
+  await page.getByRole("button", { name: /Main Menu/ }).click();
+  await page.waitForURL("**/");
+  await expect(page.getByText("Block Drop")).toBeVisible(); // landing game picker
+});
+
 test("levels are locked until the previous one is cleared", async ({ page }) => {
   await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Play" }).click();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSettings, type QualityTier } from "@/store/useSettings";
 import { Button, Panel, Slider, Toggle } from "@/components/ui";
 
@@ -34,6 +35,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [advanced, setAdvanced] = useState(false);
   const s = useSettings();
   const fps = useFps();
+  const router = useRouter();
   const initialBroadcast = useRef(false);
 
   // ensure game has current values when panel opens
@@ -46,6 +48,14 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="relative">
+        <button
+          onClick={onClose}
+          aria-label="Close settings"
+          className="pointer-events-auto absolute -right-2 -top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-lg text-white shadow-lg ring-1 ring-white/20 transition hover:bg-zinc-700"
+        >
+          ✕
+        </button>
       <Panel title="Settings">
         <div className="mb-4 flex gap-2 font-mono text-sm">
           {(["audio", "graphics", "gameplay"] as Tab[]).map((t) => (
@@ -154,10 +164,12 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="mt-5 flex justify-end">
+        <div className="mt-5 flex justify-between gap-3">
+          <Button variant="ghost" onClick={() => router.push("/")}>🏠 Main Menu</Button>
           <Button onClick={onClose}>Done</Button>
         </div>
       </Panel>
+      </div>
     </div>
   );
 }
