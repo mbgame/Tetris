@@ -223,6 +223,53 @@ test("rotate power-up arms and spins a tray piece", async ({ page }) => {
   if (!res.square) expect(res.changed).toBe(true); // non-square pieces visibly rotate
 });
 
+test("levels are locked until the previous one is cleared", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Play" }).click();
+  // level select: level 1 open, level 2 locked
+  const lvl2 = page.getByRole("button", { name: /2\. Warming Up/ });
+  await expect(lvl2).toBeDisabled();
+  await expect(lvl2).toContainText("🔒");
+});
+
+test("clearing a level unlocks the next (persisted)", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByText("Calm Start").click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__?.scene.getScene("BlastScene")?.["running"] === true,
+    { timeout: 12000 },
+  );
+
+  // jump the score to target, then place a valid piece → triggers level complete
+  await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    const b = s["board"];
+    const piece = s["tray"].find((t: any) => t);
+    let col = 0;
+    let row = 0;
+    outer: for (let r = 0; r < b.size; r++)
+      for (let c = 0; c < b.size; c++)
+        if (b.canPlace(piece.shape.cells, c, r)) { col = c; row = r; break outer; }
+    s["score"] = s["level"].targetPoints; // next placement pushes over the target
+    s["commitPlacement"](piece, col, row);
+  });
+
+  // unlock is persisted to localStorage
+  await page.waitForFunction(
+    () => {
+      try {
+        const raw = localStorage.getItem("chromasand-progress");
+        if (!raw) return false;
+        return (JSON.parse(raw).state?.blastUnlocked ?? 1) >= 2;
+      } catch {
+        return false;
+      }
+    },
+    { timeout: 5000 },
+  );
+});
+
 test("no-move board defers the loss while a power-up can rescue", async ({ page }) => {
   await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Play" }).click();

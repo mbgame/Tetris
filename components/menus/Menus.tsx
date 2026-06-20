@@ -82,24 +82,32 @@ export function BlastLevelSelect({
   onStart: (id: number) => void;
   onBack: () => void;
 }) {
+  const blastUnlocked = useProgress((s) => s.blastUnlocked);
   return (
     <Overlay>
       <Panel title="Block Drop — Select Level">
         <div className="grid grid-cols-2 gap-2">
-          {BLAST_LEVELS.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => onStart(l.id)}
-              className="rounded-lg bg-white/10 p-3 text-left font-mono text-sm transition hover:bg-white/20"
-            >
-              <div className="font-bold">
-                {l.id}. {l.name}
-              </div>
-              <div className="text-xs opacity-60">
-                target {l.targetPoints.toLocaleString()} · {l.colors.length} colors
-              </div>
-            </button>
-          ))}
+          {BLAST_LEVELS.map((l) => {
+            const locked = l.id > blastUnlocked;
+            return (
+              <button
+                key={l.id}
+                disabled={locked}
+                onClick={() => onStart(l.id)}
+                className={`rounded-lg p-3 text-left font-mono text-sm transition ${
+                  locked ? "cursor-not-allowed bg-white/5 opacity-40" : "bg-white/10 hover:bg-white/20"
+                }`}
+              >
+                <div className="font-bold">
+                  {locked ? "🔒 " : ""}
+                  {l.id}. {l.name}
+                </div>
+                <div className="text-xs opacity-60">
+                  target {l.targetPoints.toLocaleString()} · {l.colors.length} colors
+                </div>
+              </button>
+            );
+          })}
         </div>
         <div className="mt-4 flex justify-end">
           <Button variant="ghost" onClick={onBack}>Back</Button>

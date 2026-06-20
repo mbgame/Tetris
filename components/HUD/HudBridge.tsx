@@ -40,7 +40,8 @@ export default function HudBridge() {
       });
 
     const onComplete = (p: { level: number; score: number; timeMs?: number }) => {
-      useProgress.getState().unlock(p.level + 1);
+      if (useHud.getState().mode === "blast") useProgress.getState().unlockBlast(p.level + 1);
+      else useProgress.getState().unlock(p.level + 1);
       useProgress.getState().recordScore(p.level, p.score, p.timeMs);
     };
     const onOver = (p: { level: number; score: number }) =>
