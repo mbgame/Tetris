@@ -14,7 +14,7 @@ import { EventName } from "../state/EventNames";
 
 const TRAY_SLOTS = 3;
 const TRAY_SCALE_MAX = 0.7; // cap on parked piece size (small pieces don't blow up)
-const BOTTOM_RESERVE = 0.12; // fraction of height kept clear for the DOM power-up bar
+const RIGHT_RESERVE = 0.2; // fraction of width kept clear for the DOM power-up rail
 
 interface TrayPiece {
   container: Phaser.GameObjects.Container;
@@ -192,17 +192,21 @@ export class BlastScene extends Phaser.Scene {
     this.startBanner();
   }
 
-  /** Fit the square board in the upper area; tray below it, power-up bar last. */
+  /**
+   * Fit the square board in the upper-left area; tray below it. The right strip
+   * (RIGHT_RESERVE of width) is left clear for the DOM power-up rail.
+   */
   private computeLayout() {
     const { width, height } = this.scale.gameSize;
     const size = this.board.size;
     const topPad = height * 0.12; // HUD top bar
-    const trayBand = height * 0.17; // draggable tray pieces
-    const availH = height - topPad - trayBand - BOTTOM_RESERVE * height;
-    const maxW = width * 0.92;
+    const trayBand = height * 0.18; // draggable tray pieces
+    const availH = height - topPad - trayBand;
+    const playW = width * (1 - RIGHT_RESERVE);
+    const maxW = playW * 0.92;
     this.cell = Math.floor(Math.min(maxW / size, availH / size));
     const boardPx = this.cell * size;
-    this.originX = Math.floor((width - boardPx) / 2);
+    this.originX = Math.floor((playW - boardPx) / 2);
     this.originY = Math.floor(topPad + (availH - boardPx) / 2);
   }
 
@@ -279,12 +283,13 @@ export class BlastScene extends Phaser.Scene {
     const colorId = 1 + Math.floor(this.rng() * this.level.colors.length);
     const { width, height } = this.scale.gameSize;
     const cell = this.cell;
-    const slotW = width / TRAY_SLOTS;
+    // tray spans the same left play area as the board (right strip is the rail)
+    const playW = width * (1 - RIGHT_RESERVE);
+    const slotW = playW / TRAY_SLOTS;
     const slotCx = slotW * (slot + 0.5);
 
-    // tray band sits between the board bottom and the (reserved) power-up bar
     const trayTop = this.originY + cell * this.board.size;
-    const trayH = height - trayTop - BOTTOM_RESERVE * height;
+    const trayH = height - trayTop - height * 0.03;
     const slotCy = trayTop + trayH / 2;
     const slotBoxW = slotW * 0.82;
     const slotBoxH = trayH * 0.6;

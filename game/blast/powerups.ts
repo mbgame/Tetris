@@ -13,11 +13,11 @@ export interface PowerupDef {
 }
 
 export const POWERUPS: PowerupDef[] = [
-  { kind: "refresh", icon: "🔄", label: "Refresh", desc: "Swap the 3 tray pieces for new ones", cost: 3 },
-  { kind: "hammer", icon: "🔨", label: "Hammer", desc: "Tap a block to smash it", cost: 4 },
-  { kind: "color", icon: "🎨", label: "Recolor", desc: "Make all tray pieces one color", cost: 5 },
-  { kind: "bomb", icon: "💣", label: "Clear Row", desc: "Delete the bottom filled row", cost: 6 },
-  { kind: "mult", icon: "✨", label: "Multiplier", desc: "Boost points (2×→3×→4×) for a few moves", cost: 8 },
+  { kind: "refresh", icon: "🔄", label: "Refresh", desc: "Swap the 3 tray pieces for new ones", cost: 6 },
+  { kind: "hammer", icon: "🔨", label: "Hammer", desc: "Tap a block to smash it", cost: 8 },
+  { kind: "color", icon: "🎨", label: "Recolor", desc: "Make all tray pieces one color", cost: 10 },
+  { kind: "bomb", icon: "💣", label: "Clear Row", desc: "Delete the bottom filled row", cost: 14 },
+  { kind: "mult", icon: "✨", label: "Multiplier", desc: "Boost points (2×→3×→4×) for a few moves", cost: 16 },
 ];
 
 export const POWERUP_COST: Record<PowerupKind, number> = POWERUPS.reduce(

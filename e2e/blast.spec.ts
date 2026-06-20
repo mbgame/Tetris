@@ -139,7 +139,7 @@ test("power-ups: multiplier and refresh work", async ({ page }) => {
     () => (window as any).__PHASER_GAME__.scene.getScene("BlastScene")["scoreMult"] > 1,
     { timeout: 5000 },
   );
-  await expect(page.getByText(/×.*left/)).toBeVisible();
+  await expect(page.getByText(/× POINTS/)).toBeVisible();
 
   // refresh swaps the tray for a fresh set (containers differ)
   const changed = await page.evaluate(async () => {
