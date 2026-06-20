@@ -31,6 +31,9 @@ export const EventName = {
   HoldUpdate: "hold:update",
   StateChange: "state:change",
   LinesCleared: "lines:cleared",
+  // Block Drop economy
+  CoinUpdate: "coin:update",
+  PowerupUpdate: "powerup:update",
   GameOver: "game:over",
   LevelComplete: "level:complete",
   Victory: "victory",
@@ -43,6 +46,7 @@ export const EventName = {
   RequestRestart: "request:restart",
   RequestStartLevel: "request:start-level",
   RequestQuit: "request:quit",
+  RequestPowerup: "request:powerup",
 
   // audio
   Sfx: "sfx",
@@ -136,6 +140,25 @@ export interface SettingsChangePayload {
   [key: string]: unknown;
 }
 
+export interface CoinUpdatePayload {
+  coins: number;
+}
+
+export interface PowerupUpdatePayload {
+  /** active scoring multiplier (1 = none) */
+  multiplier: number;
+  /** moves remaining on the multiplier */
+  multMoves: number;
+  /** hammer armed → next board tap smashes a block */
+  hammerArmed: boolean;
+  /** rotate armed → next tray-piece tap spins it 90° */
+  rotateArmed: boolean;
+}
+
+export interface RequestPowerupPayload {
+  kind: "refresh" | "bomb" | "hammer" | "mult" | "rotate";
+}
+
 export interface InputActionPayload {
   action: InputAction;
   /** true on key-down/press start; false on release (for held actions) */
@@ -170,6 +193,8 @@ export type GameEvents = {
   [EventName.HoldUpdate]: HoldUpdatePayload;
   [EventName.StateChange]: StateChangePayload;
   [EventName.LinesCleared]: LinesClearedPayload;
+  [EventName.CoinUpdate]: CoinUpdatePayload;
+  [EventName.PowerupUpdate]: PowerupUpdatePayload;
   [EventName.GameOver]: GameOverPayload;
   [EventName.LevelComplete]: LevelCompletePayload;
   [EventName.Victory]: GameOverPayload;
@@ -181,6 +206,7 @@ export type GameEvents = {
   [EventName.RequestRestart]: void;
   [EventName.RequestStartLevel]: { level: number; mode?: GameMode };
   [EventName.RequestQuit]: void;
+  [EventName.RequestPowerup]: RequestPowerupPayload;
 
   [EventName.Sfx]: SfxPayload;
 };

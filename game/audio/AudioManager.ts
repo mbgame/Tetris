@@ -9,7 +9,7 @@ import {
 } from "./audioMath";
 
 const MAX_VOICES = 8;
-const CROSSFADE_MS = 800;
+const CROSSFADE_MS = 320; // quick enough that the previous theme clearly stops
 const DUCK_MS = 250;
 
 // ── BGM score ──────────────────────────────────────────────────────────────
@@ -19,13 +19,21 @@ const LOOKAHEAD_MS = 25;       // scheduler tick
 const SCHEDULE_AHEAD = 0.12;   // seconds queued ahead of the clock
 const STEPS_PER_BAR = 16;      // 16th-note resolution
 
-/** Epic minor loop i–VI–III–VII (Aeolian), semitone offsets from the root. */
-const PROGRESSION: { bass: number; triad: number[] }[] = [
-  { bass: 0, triad: [0, 3, 7] },   // i
-  { bass: -4, triad: [-4, 0, 3] }, // VI
-  { bass: 3, triad: [3, 7, 10] },  // III
-  { bass: -2, triad: [-2, 2, 5] }, // VII
-];
+type Chord = { bass: number; triad: number[] };
+
+/** A complete, self-contained loop for one world: harmony, tempo, timbre and
+ *  rhythmic density. Two themes never share a score, so every level loops
+ *  differently — not just at a different pitch. Semitones are offsets from the
+ *  theme root. `arpDiv` = 16th-steps between arp notes (1 busy, 4 sparse). */
+interface ThemeScore {
+  root: number;          // root frequency (Hz)
+  bpm: number;           // base tempo, level bump added in playBgm
+  progression: Chord[];  // one chord per bar, looped
+  padType: OscillatorType;
+  bassType: OscillatorType;
+  arpType: OscillatorType;
+  arpDiv: number;        // arp note spacing in 16th steps
+}
 
 /**
  * Web Audio engine: master → {music, sfx, ambience} gain buses (docs/04 §1).
@@ -57,6 +65,7 @@ export class AudioManager {
   private padOscs: OscillatorNode[] = [];
   private currentTheme = "dawn";
   private currentLevel = 1;
+  private score: ThemeScore = themeScore("dawn");
 
   // sequencer state
   private seqTimer?: ReturnType<typeof setInterval>;
@@ -233,9 +242,14 @@ export class AudioManager {
 
   // ── BGM (per-theme pad) + crossfade ──────────────────────────────────────
   private onLevelChange = (p: LevelChangePayload) => {
+    const themeChanged = p.theme !== this.currentTheme;
     this.currentTheme = p.theme;
     this.currentLevel = p.level;
-    if (this.started) this.playBgm(p.theme);
+    if (!this.started) return;
+    // Only rebuild the loop when the world's theme actually changes — replays /
+    // same-theme transitions keep the music flowing instead of restacking it.
+    if (themeChanged) this.playBgm(p.theme);
+    else this.bpm = this.score.bpm + Math.min(this.currentLevel, 18);
   };
 
   /** (Re)start the layered score for a theme: crossfade a new chord pad, retune
@@ -245,8 +259,9 @@ export class AudioManager {
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    this.root = themeRoot(theme);
-    this.bpm = themeBpm(theme) + Math.min(this.currentLevel, 18); // ramps with level
+    this.score = themeScore(theme);
+    this.root = this.score.root;
+    this.bpm = this.score.bpm + Math.min(this.currentLevel, 18); // ramps with level
 
     // persistent group + sequencer layer (first run only)
     if (!this.bgmGain) {
@@ -285,7 +300,7 @@ export class AudioManager {
     const oscs: OscillatorNode[] = [];
     for (let i = 0; i < 3; i++) {
       const osc = ctx.createOscillator();
-      osc.type = "sawtooth";
+      osc.type = this.score.padType;
       osc.detune.value = (i - 1) * 8; // slight spread for width
       osc.connect(lp);
       osc.start(t);
@@ -303,9 +318,11 @@ export class AudioManager {
     this.padOscs = oscs;
     this.setChordPad(0, t); // tune to first chord
 
+    // Restart the sequence at the downbeat so each world's loop begins fresh
+    // (reinforces that the previous theme stopped and a new one started).
+    this.seqStep = 0;
+    this.nextStepTime = t + 0.08;
     if (this.seqTimer === undefined) {
-      this.seqStep = 0;
-      this.nextStepTime = t + 0.08;
       this.seqTimer = setInterval(() => this.scheduler(), LOOKAHEAD_MS);
     }
     this.startAmbience(theme);
@@ -323,9 +340,10 @@ export class AudioManager {
 
   /** Emit the layers for a single 16th-note step at absolute time `t`. */
   private scheduleStep(step: number, t: number): void {
+    const prog = this.score.progression;
     const s = step % STEPS_PER_BAR;
-    const chordIdx = Math.floor(step / STEPS_PER_BAR) % PROGRESSION.length;
-    const chord = PROGRESSION[chordIdx];
+    const chordIdx = Math.floor(step / STEPS_PER_BAR) % prog.length;
+    const chord = prog[chordIdx];
 
     if (s === 0) this.setChordPad(chordIdx, t); // retune pad at each bar
 
@@ -334,10 +352,12 @@ export class AudioManager {
       const accent = s === 0 ? 1 : 0.7;
       this.bassNote(this.semi(chord.bass) / 2, t, accent);
     }
-    // arpeggio: plucky 8th notes climbing the chord, an octave+ up → "epic" sparkle
-    if (s % 2 === 0) {
+    // arpeggio: plucky notes climbing the chord (density per theme), an octave+
+    // up → "epic" sparkle. arpDiv sets the spacing so each world has its own feel.
+    const div = this.score.arpDiv;
+    if (s % div === 0) {
       const arp = chord.triad;
-      const beat = s / 2; // 0..7
+      const beat = s / div;
       const note = arp[beat % arp.length] + (beat >= arp.length ? 12 : 0);
       this.arpNote(this.semi(note) * 2, t);
     }
@@ -350,7 +370,7 @@ export class AudioManager {
 
   /** Retune the 3 pad saws to a chord triad (smooth glide, anti-zipper). */
   private setChordPad(chordIdx: number, t: number): void {
-    const triad = PROGRESSION[chordIdx].triad;
+    const triad = this.score.progression[chordIdx].triad;
     this.padOscs.slice(0, 3).forEach((osc, i) => {
       osc.frequency.setTargetAtTime(this.semi(triad[i % triad.length]), t, 0.08);
     });
@@ -360,7 +380,7 @@ export class AudioManager {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
-    osc.type = "sine";
+    osc.type = this.score.bassType;
     osc.frequency.setValueAtTime(freq * 2, t);          // quick pitch drop = thump
     osc.frequency.exponentialRampToValueAtTime(freq, t + 0.04);
     g.gain.setValueAtTime(0.0001, t);
@@ -375,7 +395,7 @@ export class AudioManager {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
-    osc.type = "triangle";
+    osc.type = this.score.arpType;
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.14, t + 0.008);
@@ -414,7 +434,7 @@ export class AudioManager {
       this.ambienceFilter = filt;
     }
     // retune the bed per theme
-    if (this.ambienceFilter) this.ambienceFilter.frequency.value = themeRoot(theme) * 4;
+    if (this.ambienceFilter) this.ambienceFilter.frequency.value = themeScore(theme).root * 4;
   }
 
   // ── ducking + pause ──────────────────────────────────────────────────────
@@ -471,20 +491,96 @@ export class AudioManager {
   }
 }
 
-/** Map a scene theme to a musical root frequency so each world sounds distinct. */
-function themeRoot(theme: string): number {
-  const roots: Record<string, number> = {
-    dawn: 130.8, neon: 146.8, crystal: 164.8, dunes: 110, ocean: 98,
-    forge: 87.3, aurora: 174.6, sky: 196, void: 73.4, prism: 220,
-  };
-  return roots[theme] ?? 130.8;
-}
+/**
+ * One unique loop per world. Each entry is a full composition — distinct
+ * harmony (mode/progression), tempo, timbre and arp density — so every level's
+ * background music is its own track, not a transposition of a shared loop.
+ * Semitone offsets are relative to the theme root.
+ */
+const THEMES: Record<string, ThemeScore> = {
+  // warm, bright major (I–V–vi–IV) — gentle plucky triangles
+  dawn: {
+    root: 130.8, bpm: 88, padType: "sawtooth", bassType: "sine", arpType: "triangle", arpDiv: 2,
+    progression: [
+      { bass: 0, triad: [0, 4, 7] }, { bass: 7, triad: [7, 11, 14] },
+      { bass: 9, triad: [9, 12, 16] }, { bass: 5, triad: [5, 9, 12] },
+    ],
+  },
+  // driving synthwave minor (i–VI–VII–v) — busy square arp
+  neon: {
+    root: 146.8, bpm: 104, padType: "sawtooth", bassType: "sawtooth", arpType: "square", arpDiv: 1,
+    progression: [
+      { bass: 0, triad: [0, 3, 7] }, { bass: 8, triad: [8, 12, 15] },
+      { bass: 10, triad: [10, 14, 17] }, { bass: 7, triad: [7, 10, 14] },
+    ],
+  },
+  // dreamy lydian sparkle — soft sine arp climbing in 4ths
+  crystal: {
+    root: 164.8, bpm: 96, padType: "triangle", bassType: "triangle", arpType: "sine", arpDiv: 2,
+    progression: [
+      { bass: 0, triad: [0, 4, 7] }, { bass: 2, triad: [2, 6, 9] },
+      { bass: 5, triad: [5, 9, 12] }, { bass: 7, triad: [7, 11, 14] },
+    ],
+  },
+  // phrygian exotic (i–bII–i–bVII) — that flat-2 desert tension
+  dunes: {
+    root: 110, bpm: 84, padType: "sawtooth", bassType: "square", arpType: "triangle", arpDiv: 2,
+    progression: [
+      { bass: 0, triad: [0, 3, 7] }, { bass: 1, triad: [1, 5, 8] },
+      { bass: 0, triad: [0, 3, 7] }, { bass: 10, triad: [10, 13, 17] },
+    ],
+  },
+  // calm, suspended/open chords — sparse sine arp, lots of air
+  ocean: {
+    root: 98, bpm: 80, padType: "sine", bassType: "sine", arpType: "sine", arpDiv: 4,
+    progression: [
+      { bass: 0, triad: [0, 5, 7] }, { bass: -2, triad: [-2, 3, 5] },
+      { bass: 3, triad: [3, 7, 10] }, { bass: 5, triad: [5, 10, 12] },
+    ],
+  },
+  // heavy minor power (i–bVI–bVII–i) — square bass + arp, molten
+  forge: {
+    root: 87.3, bpm: 100, padType: "sawtooth", bassType: "square", arpType: "square", arpDiv: 2,
+    progression: [
+      { bass: 0, triad: [0, 3, 7] }, { bass: 8, triad: [8, 12, 15] },
+      { bass: 10, triad: [10, 14, 17] }, { bass: 0, triad: [0, 3, 7] },
+    ],
+  },
+  // shimmering major7 — bright triangle arp, slow and wide
+  aurora: {
+    root: 174.6, bpm: 92, padType: "sawtooth", bassType: "sine", arpType: "triangle", arpDiv: 2,
+    progression: [
+      { bass: 0, triad: [0, 4, 7] }, { bass: 9, triad: [9, 12, 16] },
+      { bass: 5, triad: [5, 9, 12] }, { bass: 7, triad: [7, 11, 14] },
+    ],
+  },
+  // uplifting major (IV–V–I–vi) — anthemic, soaring
+  sky: {
+    root: 196, bpm: 98, padType: "sawtooth", bassType: "sine", arpType: "triangle", arpDiv: 2,
+    progression: [
+      { bass: 5, triad: [5, 9, 12] }, { bass: 7, triad: [7, 11, 14] },
+      { bass: 0, triad: [0, 4, 7] }, { bass: 9, triad: [9, 12, 16] },
+    ],
+  },
+  // dark, dissonant diminished/tritone colour — sawtooth arp, unsettling
+  void: {
+    root: 73.4, bpm: 76, padType: "sawtooth", bassType: "sine", arpType: "sawtooth", arpDiv: 2,
+    progression: [
+      { bass: 0, triad: [0, 3, 6] }, { bass: -1, triad: [-1, 2, 6] },
+      { bass: 3, triad: [3, 6, 9] }, { bass: -2, triad: [-2, 1, 5] },
+    ],
+  },
+  // bright whole-tone-ish augmented — busy square arp, kaleidoscopic
+  prism: {
+    root: 220, bpm: 108, padType: "sawtooth", bassType: "triangle", arpType: "square", arpDiv: 1,
+    progression: [
+      { bass: 0, triad: [0, 4, 8] }, { bass: 2, triad: [2, 6, 10] },
+      { bass: 4, triad: [4, 8, 12] }, { bass: -2, triad: [-2, 2, 6] },
+    ],
+  },
+};
 
-/** Per-theme base tempo (BPM); the level bump is added on top in playBgm. */
-function themeBpm(theme: string): number {
-  const bpm: Record<string, number> = {
-    dawn: 88, neon: 104, crystal: 96, dunes: 84, ocean: 80,
-    forge: 100, aurora: 92, sky: 98, void: 76, prism: 108,
-  };
-  return bpm[theme] ?? 92;
+/** Resolve a scene theme to its unique loop score (falls back to dawn). */
+function themeScore(theme: string): ThemeScore {
+  return THEMES[theme] ?? THEMES.dawn;
 }

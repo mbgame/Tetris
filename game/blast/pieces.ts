@@ -51,6 +51,17 @@ export const BLAST_SHAPES: PieceShape[] = [
   shape([[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], 2), // rect 3×2
 ];
 
+/** Rotate a shape 90° clockwise, re-normalized to origin 0,0. */
+export function rotateShape(s: PieceShape): PieceShape {
+  const pts = s.cells.map((c) => ({ x: -c.y, y: c.x }));
+  const minX = Math.min(...pts.map((p) => p.x));
+  const minY = Math.min(...pts.map((p) => p.y));
+  const cells = pts.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+  const w = Math.max(...cells.map((c) => c.x)) + 1;
+  const h = Math.max(...cells.map((c) => c.y)) + 1;
+  return { cells, w, h, tier: s.tier };
+}
+
 /**
  * Synthesize a randomized connected blob of `n` cells via a random walk —
  * occasional organic shapes so the set never feels fully fixed.

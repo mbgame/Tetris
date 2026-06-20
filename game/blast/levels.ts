@@ -24,38 +24,42 @@ export interface BlastLevelConfig {
   bgmKey: string;
 }
 
+// Tuned to be challenging but fair: meaningful point targets, rising starting
+// noise (up to ~38% of the 64-cell board), and a difficulty curve up to 0.85 so
+// big/awkward pieces show up often on later levels. Power-ups + multipliers are
+// the pressure valve — costs are set so you must earn them through clears.
 export const BLAST_LEVELS: BlastLevelConfig[] = [
   {
     id: 1, name: "Calm Start", scene: "dawn", colors: palette(["#FF6B6B", "#4ECDC4"]),
-    targetPoints: 600, noiseCells: 3, difficulty: 0.0, bgDim: 0.25, bgmKey: "bgm-dawn",
+    targetPoints: 600, noiseCells: 3, difficulty: 0.05, bgDim: 0.25, bgmKey: "bgm-dawn",
   },
   {
     id: 2, name: "Warming Up", scene: "neon", colors: palette(["#FF2E97", "#00F0FF", "#FFE93D"]),
-    targetPoints: 1000, noiseCells: 6, difficulty: 0.15, bgDim: 0.3, bgmKey: "bgm-neon",
+    targetPoints: 1100, noiseCells: 6, difficulty: 0.2, bgDim: 0.3, bgmKey: "bgm-neon",
   },
   {
     id: 3, name: "Crowded", scene: "crystal", colors: palette(["#7DE2FC", "#B07CFF", "#FF8FB1"]),
-    targetPoints: 1500, noiseCells: 10, difficulty: 0.3, bgDim: 0.3, bgmKey: "bgm-crystal",
+    targetPoints: 1700, noiseCells: 9, difficulty: 0.33, bgDim: 0.3, bgmKey: "bgm-crystal",
   },
   {
     id: 4, name: "Tight Fit", scene: "dunes", colors: palette(["#E8B25F", "#D9644A", "#7FB069", "#5BC0EB"]),
-    targetPoints: 2200, noiseCells: 14, difficulty: 0.45, bgDim: 0.3, bgmKey: "bgm-dunes",
+    targetPoints: 2500, noiseCells: 12, difficulty: 0.45, bgDim: 0.3, bgmKey: "bgm-dunes",
   },
   {
     id: 5, name: "Deep Water", scene: "ocean", colors: palette(["#48CAE4", "#0096C7", "#90BE6D", "#F9C74F"]),
-    targetPoints: 3000, noiseCells: 18, difficulty: 0.6, bgDim: 0.35, bgmKey: "bgm-ocean",
+    targetPoints: 3400, noiseCells: 15, difficulty: 0.57, bgDim: 0.35, bgmKey: "bgm-ocean",
   },
   {
     id: 6, name: "Forge Pressure", scene: "forge", colors: palette(["#FF5400", "#FFB703", "#E63946", "#8338EC", "#06D6A0"]),
-    targetPoints: 4000, noiseCells: 22, difficulty: 0.75, bgDim: 0.35, bgmKey: "bgm-forge",
+    targetPoints: 4500, noiseCells: 18, difficulty: 0.67, bgDim: 0.35, bgmKey: "bgm-forge",
   },
   {
     id: 7, name: "Aurora Maze", scene: "aurora", colors: palette(["#00F5D4", "#9B5DE5", "#F15BB5", "#FEE440", "#00BBF9"]),
-    targetPoints: 5200, noiseCells: 26, difficulty: 0.9, bgDim: 0.35, bgmKey: "bgm-aurora",
+    targetPoints: 5800, noiseCells: 21, difficulty: 0.77, bgDim: 0.35, bgmKey: "bgm-aurora",
   },
   {
     id: 8, name: "Prism Gauntlet", scene: "prism", colors: palette(["#FF595E", "#FFCA3A", "#8AC926", "#1982C4", "#6A4C93", "#FF924C"]),
-    targetPoints: 6500, noiseCells: 30, difficulty: 1.0, bgDim: 0.4, bgmKey: "bgm-prism",
+    targetPoints: 7200, noiseCells: 24, difficulty: 0.85, bgDim: 0.4, bgmKey: "bgm-prism",
   },
 ];
 

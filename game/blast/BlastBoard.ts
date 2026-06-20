@@ -66,6 +66,18 @@ export class BlastBoard {
     return false;
   }
 
+  /**
+   * How many rows+columns would clear if `cells` were placed at (ox, oy).
+   * Temporarily writes then restores the grid — caller must canPlace first.
+   * Used by the idle-hint heuristic.
+   */
+  linesIfPlaced(cells: { x: number; y: number }[], ox: number, oy: number): number {
+    for (const c of cells) this.grid[oy + c.y][ox + c.x] = 1;
+    const { rows, cols } = this.getFullLines();
+    for (const c of cells) this.grid[oy + c.y][ox + c.x] = EMPTY;
+    return rows.length + cols.length;
+  }
+
   /** Indices of every fully-filled row and column. */
   getFullLines(): { rows: number[]; cols: number[] } {
     const rows: number[] = [];
@@ -104,6 +116,19 @@ export class BlastBoard {
       }
     }
     return cleared;
+  }
+
+  /** Empty the given cells (power-ups: hammer / clear-row). Returns prior fills. */
+  removeCells(cells: { x: number; y: number }[]): BlastCell[] {
+    const removed: BlastCell[] = [];
+    for (const { x, y } of cells) {
+      const colorId = this.get(x, y);
+      if (colorId !== EMPTY) {
+        removed.push({ x, y, colorId });
+        this.set(x, y, EMPTY);
+      }
+    }
+    return removed;
   }
 
   /** True if a cleared line was all one color (scoring bonus). */
