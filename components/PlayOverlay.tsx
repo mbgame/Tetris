@@ -76,7 +76,9 @@ export default function PlayOverlay({ mode }: { mode: GameMode }) {
             />
           )}
           {phase === "GAME_OVER" && <GameOverCard onRetry={restart} onQuit={quit} />}
-          {phase === "LEVEL_COMPLETE" && <LevelCompleteCard />}
+          {/* Block Drop plays an in-canvas level-up celebration + auto-advances,
+              so skip the dimming card that would hide it. */}
+          {!isBlast && phase === "LEVEL_COMPLETE" && <LevelCompleteCard />}
           {phase === "VICTORY" && <VictoryCard onQuit={quit} />}
         </>
       )}

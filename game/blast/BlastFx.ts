@@ -4,6 +4,34 @@ import type { BlastCell } from "./BlastBoard";
 import type { ClearStyle } from "./materials";
 
 /**
+ * Fullscreen level-up shockwave: a chromatic ring expanding from centre with a
+ * warm central flash, additively blended over the scene. uProgress 0→1 grows
+ * the ring and fades the whole pass out. WebGL1-style (gl_FragColor) to match
+ * the project's background shaders.
+ */
+const LEVELUP_FRAG = `
+precision mediump float;
+uniform vec2 uResolution;
+uniform vec2 uCenter;
+uniform float uProgress;
+void main() {
+  vec2 p = (gl_FragCoord.xy - uCenter) / uResolution.y;
+  float d = length(p);
+  float r = uProgress * 1.25;
+  float w = 0.05 + 0.04 * uProgress;
+  // chromatic ring: offset radius per channel
+  float rr = smoothstep(w, 0.0, abs(d - (r + 0.018)));
+  float gg = smoothstep(w, 0.0, abs(d - r));
+  float bb = smoothstep(w, 0.0, abs(d - (r - 0.018)));
+  float flash = smoothstep(0.55, 0.0, d) * (1.0 - uProgress);
+  float fade = 1.0 - uProgress;
+  vec3 col = vec3(rr, gg, bb) * 1.5 + vec3(1.0, 0.92, 0.65) * flash * 0.8;
+  float a = clamp((max(max(rr, gg), bb) + flash) * fade, 0.0, 1.0);
+  gl_FragColor = vec4(col * a, a);
+}
+`;
+
+/**
  * Visual-effects helper for Block Drop — all the "juice": floating score/coin
  * popups, placement pops, line-clear shard bursts + shockwave rings, combo
  * banners and the level-up celebration. Pure presentation; no game state.
@@ -262,6 +290,38 @@ export class BlastFx {
     this.ring(cx, cy, 40, color, 9, 520);
   }
 
+  /** Fullscreen GPU shockwave (level-up). No-op if WebGL/shaders unavailable. */
+  private shaderWave() {
+    const { width, height } = this.scene.scale.gameSize;
+    try {
+      const wave = this.scene.add
+        .shader(
+          {
+            name: "blast-levelup-wave",
+            fragmentSource: LEVELUP_FRAG,
+            initialUniforms: { uResolution: [width, height], uCenter: [width / 2, height / 2], uProgress: 0 },
+          },
+          width / 2,
+          height / 2,
+          width,
+          height,
+        )
+        .setDepth(123);
+      wave.setBlendMode(Phaser.BlendModes.ADD);
+      const prox = { v: 0 };
+      this.scene.tweens.add({
+        targets: prox,
+        v: 1,
+        duration: 820,
+        ease: "Quad.easeOut",
+        onUpdate: () => wave.setUniform("uProgress", prox.v),
+        onComplete: () => wave.destroy(),
+      });
+    } catch {
+      /* Canvas renderer / no shader support — graphics rings already cover it */
+    }
+  }
+
   /** Big combo banner for 2+ simultaneous lines. */
   comboBanner(cx: number, cy: number, lineCount: number) {
     if (lineCount < 2) return;
@@ -291,6 +351,7 @@ export class BlastFx {
     }
 
     this.scene.cameras.main.flash(260, 255, 255, 255, false);
+    this.shaderWave(); // true fullscreen GPU shockwave
 
     // expanding rings
     for (let r = 0; r < 3; r++) {
