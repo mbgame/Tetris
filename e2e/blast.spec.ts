@@ -117,3 +117,46 @@ test("placing a piece increases the score", async ({ page }) => {
   });
   expect(scored.after).toBeGreaterThan(scored.before);
 });
+
+test("power-ups: multiplier and refresh work", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByText("Calm Start").click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__?.scene.getScene("BlastScene")?.["running"] === true,
+    { timeout: 12000 },
+  );
+
+  // grant coins so the bar enables, then verify the wallet reaches the HUD
+  await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    s["coins"] = 50;
+    s["emitCoins"]();
+  });
+  // buy the multiplier → badge appears, scene multiplier > 1
+  await page.getByRole("button", { name: /Multiplier/ }).click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__.scene.getScene("BlastScene")["scoreMult"] > 1,
+    { timeout: 5000 },
+  );
+  await expect(page.getByText(/×.*left/)).toBeVisible();
+
+  // refresh swaps the tray for a fresh set (containers differ)
+  const changed = await page.evaluate(async () => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    const ids = s["tray"].map((t: any) => t?.container?.name ?? Math.random());
+    // tag containers so we can tell if they were replaced
+    s["tray"].forEach((t: any, i: number) => t && (t.container.name = `pre${i}`));
+    (window as any).__refreshBus = true;
+    return ids.length;
+  });
+  expect(changed).toBe(3);
+  await page.getByRole("button", { name: /Refresh/ }).click();
+  const replaced = await page.evaluate(
+    () =>
+      (window as any).__PHASER_GAME__.scene
+        .getScene("BlastScene")
+        ["tray"].every((t: any) => t && !String(t.container.name).startsWith("pre")),
+  );
+  expect(replaced).toBe(true);
+});

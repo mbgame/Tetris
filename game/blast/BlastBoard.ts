@@ -106,6 +106,19 @@ export class BlastBoard {
     return cleared;
   }
 
+  /** Empty the given cells (power-ups: hammer / clear-row). Returns prior fills. */
+  removeCells(cells: { x: number; y: number }[]): BlastCell[] {
+    const removed: BlastCell[] = [];
+    for (const { x, y } of cells) {
+      const colorId = this.get(x, y);
+      if (colorId !== EMPTY) {
+        removed.push({ x, y, colorId });
+        this.set(x, y, EMPTY);
+      }
+    }
+    return removed;
+  }
+
   /** True if a cleared line was all one color (scoring bonus). */
   lineIsMono(cells: BlastCell[]): boolean {
     if (cells.length === 0) return false;

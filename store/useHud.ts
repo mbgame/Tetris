@@ -17,6 +17,11 @@ interface HudStore {
   next: QueuePreviewItem[];
   hold: PieceType | null;
   canHold: boolean;
+  // Block Drop economy
+  coins: number;
+  multiplier: number;
+  multMoves: number;
+  hammerArmed: boolean;
   set: (p: Partial<HudStore>) => void;
 }
 
@@ -33,5 +38,9 @@ export const useHud = create<HudStore>((set) => ({
   next: [],
   hold: null,
   canHold: true,
+  coins: 0,
+  multiplier: 1,
+  multMoves: 0,
+  hammerArmed: false,
   set: (p) => set(p),
 }));
