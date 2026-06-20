@@ -15,7 +15,7 @@ import { EventName } from "../state/EventNames";
 
 const TRAY_SLOTS = 3;
 const TRAY_SCALE_MAX = 0.7; // cap on parked piece size (small pieces don't blow up)
-const RIGHT_RESERVE = 0.2; // fraction of width kept clear for the DOM power-up rail
+const RIGHT_RESERVE = 0.14; // fraction of width kept clear for the DOM power-up rail
 const IDLE_HINT_MS = 5000; // idle time before a best-move hint appears
 
 interface TrayPiece {
@@ -225,11 +225,11 @@ export class BlastScene extends Phaser.Scene {
   private computeLayout() {
     const { width, height } = this.scale.gameSize;
     const size = this.board.size;
-    const topPad = height * 0.12; // HUD top bar
-    const trayBand = height * 0.18; // draggable tray pieces
+    const topPad = height * 0.1; // HUD top bar
+    const trayBand = height * 0.16; // draggable tray pieces
     const availH = height - topPad - trayBand;
     const playW = width * (1 - RIGHT_RESERVE);
-    const maxW = playW * 0.92;
+    const maxW = playW * 0.99;
     this.cell = Math.floor(Math.min(maxW / size, availH / size));
     const boardPx = this.cell * size;
     this.originX = Math.floor((playW - boardPx) / 2);

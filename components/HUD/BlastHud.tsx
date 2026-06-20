@@ -71,7 +71,7 @@ export default function BlastHud({
       </div>
 
       {/* power-up rail — right edge, big gamey buttons */}
-      <div className="absolute bottom-0 right-0 top-0 flex w-[19%] min-w-[72px] flex-col items-stretch justify-center gap-2.5 p-2 font-mono">
+      <div className="absolute bottom-0 right-0 top-0 flex w-[14%] min-w-[60px] flex-col items-stretch justify-center gap-2 p-1.5 font-mono">
         <div className="mb-1 text-center text-[10px] font-bold uppercase tracking-wider text-white/50">
           Power-ups
         </div>
