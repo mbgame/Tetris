@@ -121,6 +121,8 @@ export interface LinesClearedPayload {
   /** colorId per cleared cell — drives sand tint */
   colors: number[];
   count: number;
+  /** optional clear-sound timbre variant (Block Drop per-material) */
+  variant?: string;
 }
 
 export interface GameOverPayload {
@@ -182,6 +184,8 @@ export interface SfxPayload {
   name: SfxName;
   /** optional scalar (e.g. combo count) some sounds use to pitch up */
   intensity?: number;
+  /** optional timbre variant (e.g. per-material clear: glass/metal/stone/…) */
+  variant?: string;
 }
 
 // ── Event → payload map (consumed by mitt in events.ts) ─────────────────────

@@ -136,9 +136,9 @@ export class AudioManager {
   }
 
   // ── SFX (synthesized) ────────────────────────────────────────────────────
-  private onSfx = (p: SfxPayload) => this.playSfx(p.name, p.intensity);
+  private onSfx = (p: SfxPayload) => this.playSfx(p.name, p.intensity, p.variant);
 
-  playSfx(name: SfxName, intensity = 0): void {
+  playSfx(name: SfxName, intensity = 0, variant?: string): void {
     if (!this.unlocked || !this.ctx || !this.sfxBus) return;
     switch (name) {
       case "move": this.tick(220, 0.03, "square", 0.18); break;
@@ -148,10 +148,58 @@ export class AudioManager {
       case "lock": this.tick(130, 0.05, "square", 0.25); break;
       case "hold": this.tick(330, 0.05, "triangle", 0.2); break;
       case "telegraph": this.tick(880, 0.08, "sine", 0.1); break;
-      case "clear": this.sandClear(intensity); break;
+      case "clear": this.clearSound(intensity, variant); break;
       case "levelup": this.arp([523, 659, 784, 1047], 0.09); break;
       case "gameover": this.arp([392, 330, 262, 196], 0.16); break;
       case "ui": this.tick(660, 0.03, "sine", 0.15); break;
+    }
+  }
+
+  /** Per-material clear timbre (Block Drop). Falls back to the sand clear. */
+  private clearSound(intensity: number, variant?: string): void {
+    switch (variant) {
+      case "glass": // bright shatter: hiss + high tinkle cluster
+        this.noise(0.25, 0.18, "highpass", 5000);
+        this.arp([1568, 2093, 2637], 0.045, 0.12);
+        break;
+      case "metal": { // ringing clang: detuned squares through the air
+        this.tick(740, 0.18, "square", 0.16);
+        this.tick(1108, 0.22, "square", 0.12);
+        this.noise(0.12, 0.12, "bandpass", 3200);
+        break;
+      }
+      case "stone": // dull crumble: low thud + low noise
+        this.thud();
+        this.noise(0.3, 0.16, "lowpass", 600);
+        break;
+      case "electric": { // zap: fast downward sweep + crackle
+        const ctx = this.ctx!;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = "sawtooth";
+        const t = ctx.currentTime;
+        osc.frequency.setValueAtTime(1800, t);
+        osc.frequency.exponentialRampToValueAtTime(180, t + 0.18);
+        g.gain.setValueAtTime(0.22, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        osc.connect(g).connect(this.sfxBus!);
+        osc.start(t); osc.stop(t + 0.22);
+        this.trackVoice(osc);
+        this.noise(0.14, 0.14, "highpass", 4000);
+        break;
+      }
+      case "crystal": // gem shimmer: bell-like ascending sines
+        this.arp([1047, 1319, 1568, 2093], 0.06, 0.14);
+        break;
+      case "soft": // weave: gentle filtered puff + soft third
+        this.noise(0.22, 0.1, "lowpass", 1800);
+        this.arp([523, 659], 0.07, 0.1);
+        break;
+      case "chime": // glossy/grid: clean bright chime
+        this.arp([880, 1175, 1568], 0.05, 0.13);
+        break;
+      default:
+        this.sandClear(intensity);
     }
   }
 
@@ -438,8 +486,8 @@ export class AudioManager {
   }
 
   // ── ducking + pause ──────────────────────────────────────────────────────
-  private onClear = (p: { count: number }) => {
-    this.playSfx("clear", p.count); // hero sand SFX, pitch scales with rows cleared
+  private onClear = (p: { count: number; variant?: string }) => {
+    this.playSfx("clear", p.count, p.variant); // per-material timbre when supplied
     this.duckMusic();
   };
 

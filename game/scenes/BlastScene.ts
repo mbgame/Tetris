@@ -4,7 +4,7 @@ import { randomPiece, rotateShape, type PieceShape } from "../blast/pieces";
 import { BLAST_LEVEL_COUNT, getBlastLevel, type BlastLevelConfig } from "../blast/levels";
 import { placementScore, clearScore } from "../blast/scoring";
 import { BlastFx } from "../blast/BlastFx";
-import { ensureMaterials, materialForLevel } from "../blast/materials";
+import { ensureMaterials, materialForLevel, fxForLevel, type ClearStyle } from "../blast/materials";
 import { POWERUP_COST, MULT_DURATION, MULT_MAX, type PowerupKind } from "../blast/powerups";
 import { paletteFromColors, tintFor } from "../render/palette";
 import { ensureBlockTexture } from "../render/BlockRenderer";
@@ -49,6 +49,8 @@ export class BlastScene extends Phaser.Scene {
   private fx!: BlastFx;
   private matKeys: string[] = [];
   private blockTex = "blast-mat-0"; // per-level block material texture
+  private clearStyle: ClearStyle = "pop"; // per-level clear animation
+  private clearSfx = "chime"; // per-level clear sound variant
 
   private cell = 48;
   private originX = 0;
@@ -174,6 +176,9 @@ export class BlastScene extends Phaser.Scene {
     this.hammerArmed = false;
     this.rotateArmed = false;
     this.blockTex = materialForLevel(this.matKeys, id);
+    const mfx = fxForLevel(id);
+    this.clearStyle = mfx.style;
+    this.clearSfx = mfx.sfx;
 
     bus.emit(EventName.LevelChange, {
       level: this.level.id,
@@ -235,18 +240,23 @@ export class BlastScene extends Phaser.Scene {
     const size = this.board.size;
     const boardPx = this.cell * size;
     const g = this.add.graphics().setDepth(-2);
-    // recessed panel
-    g.fillStyle(0x000000, 0.4);
-    g.fillRoundedRect(this.originX - 6, this.originY - 6, boardPx + 12, boardPx + 12, 10);
+    // soft outer glow so the board reads as lit, not a dark hole
+    g.fillStyle(0xffffff, 0.06);
+    g.fillRoundedRect(this.originX - 16, this.originY - 16, boardPx + 32, boardPx + 32, 18);
+    // frosted light panel (was a dark recess) — keeps blocks readable while bright
+    g.fillStyle(0xffffff, 0.1);
+    g.fillRoundedRect(this.originX - 6, this.originY - 6, boardPx + 12, boardPx + 12, 12);
+    g.fillStyle(0x1a2433, 0.32);
+    g.fillRoundedRect(this.originX, this.originY, boardPx, boardPx, 8);
     // cell grid
-    g.lineStyle(1, 0xffffff, 0.08);
+    g.lineStyle(1, 0xffffff, 0.1);
     for (let i = 0; i <= size; i++) {
       const p = i * this.cell;
       g.lineBetween(this.originX, this.originY + p, this.originX + boardPx, this.originY + p);
       g.lineBetween(this.originX + p, this.originY, this.originX + p, this.originY + boardPx);
     }
-    g.lineStyle(2, 0x4fd1c5, 0.35);
-    g.strokeRoundedRect(this.originX, this.originY, boardPx, boardPx, 6);
+    g.lineStyle(2, 0x7fe9df, 0.5);
+    g.strokeRoundedRect(this.originX, this.originY, boardPx, boardPx, 8);
     this.gridGfx = g;
   }
 
@@ -540,8 +550,13 @@ export class BlastScene extends Phaser.Scene {
     this.emitCoins();
 
     bus.emit(EventName.ComboUpdate, { combo: lineCount - 1, b2b: 0 });
-    bus.emit(EventName.Sfx, { name: "clear", intensity: lineCount });
-    bus.emit(EventName.LinesCleared, { rows, colors: cleared.map((c) => c.colorId), count: lineCount });
+    // single clear sound (AudioManager.onClear plays it) with the material variant
+    bus.emit(EventName.LinesCleared, {
+      rows,
+      colors: cleared.map((c) => c.colorId),
+      count: lineCount,
+      variant: this.clearSfx,
+    });
 
     // centroid for the popups
     let px = 0;
@@ -566,7 +581,7 @@ export class BlastScene extends Phaser.Scene {
       this.renderBoard();
       this.clearing = false;
       this.afterPlacement();
-    });
+    }, this.clearStyle);
   }
 
   private afterPlacement() {
@@ -679,10 +694,12 @@ export class BlastScene extends Phaser.Scene {
     this.emitCoins();
     bus.emit(EventName.Sfx, { name: "ui" });
 
+    const trayY = this.originY + this.board.size * this.cell + (this.scale.height - (this.originY + this.board.size * this.cell)) * 0.4;
     switch (p.kind) {
       case "refresh":
         this.discardTray();
         this.refillTray();
+        this.fx.sparkleRing(this.scale.width * (1 - 0.2) * 0.5, trayY, 0x7dd3fc, this.cell * 1.6);
         break;
       case "bomb":
         this.clearBottomRow();
@@ -691,6 +708,7 @@ export class BlastScene extends Phaser.Scene {
         this.scoreMult = this.scoreMult < 2 ? 2 : Math.min(MULT_MAX, this.scoreMult + 1);
         this.multMoves = MULT_DURATION;
         this.emitPowerup();
+        this.fx.rays(this.scale.width / 2, this.scale.height * 0.4, 0xa78bfa);
         this.fx.floatText(this.scale.width / 2, this.scale.height * 0.33, `${this.scoreMult}× POINTS!`, {
           color: "#a78bfa",
           big: true,
@@ -709,9 +727,9 @@ export class BlastScene extends Phaser.Scene {
     if (colorId === 0) return; // tapped empty → just cancel
     this.board.removeCells([{ x: cell.col, y: cell.row }]);
     const { x, y } = this.cellCenter(cell.col, cell.row);
-    this.fx.clearBurst([{ x: cell.col, y: cell.row, colorId }], this.cell, (cx, cy) => this.cellCenter(cx, cy), () => {});
+    this.fx.clearBurst([{ x: cell.col, y: cell.row, colorId }], this.cell, (cx, cy) => this.cellCenter(cx, cy), () => {}, this.clearStyle);
     this.fx.placementPop(x, y, this.cell, colorId);
-    bus.emit(EventName.Sfx, { name: "clear", intensity: 1 });
+    bus.emit(EventName.Sfx, { name: "clear", intensity: 1, variant: this.clearSfx });
     this.renderBoard();
     this.checkGameOver();
   }
@@ -750,8 +768,10 @@ export class BlastScene extends Phaser.Scene {
     }
     this.board.removeCells(cells.map((c) => ({ x: c.x, y: c.y })));
     if (!this.reduceMotion) this.cameras.main.shake(120, 0.005);
-    this.fx.clearBurst(cells, this.cell, (cx, cy) => this.cellCenter(cx, cy), () => {});
-    bus.emit(EventName.Sfx, { name: "clear", intensity: 2 });
+    this.fx.clearBurst(cells, this.cell, (cx, cy) => this.cellCenter(cx, cy), () => {}, this.clearStyle);
+    const bx = this.originX + (this.board.size * this.cell) / 2;
+    this.fx.shockwave(bx, this.cellCenter(0, target).y, 0xffffff);
+    bus.emit(EventName.Sfx, { name: "clear", intensity: 2, variant: this.clearSfx });
     this.renderBoard();
     this.checkGameOver();
   }
