@@ -3,6 +3,7 @@ import { BootScene } from "./scenes/BootScene";
 import { PreloadScene } from "./scenes/PreloadScene";
 import { BackgroundScene } from "./scenes/BackgroundScene";
 import { GameScene } from "./scenes/GameScene";
+import { BlastScene } from "./scenes/BlastScene";
 
 /** Quality tier — full knob set lands in Phase 9; only DPR/antialias used here. */
 export type QualityTier = "low" | "medium" | "high" | "ultra";
@@ -34,6 +35,6 @@ export function buildConfig(
     },
     fps: { target: 60, forceSetTimeOut: false },
     input: { gamepad: true },
-    scene: [BootScene, PreloadScene, BackgroundScene, GameScene],
+    scene: [BootScene, PreloadScene, BackgroundScene, GameScene, BlastScene],
   };
 }

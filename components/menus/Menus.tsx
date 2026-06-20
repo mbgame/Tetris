@@ -1,6 +1,7 @@
 "use client";
 
 import { LEVELS } from "@/game/levels/levels";
+import { BLAST_LEVELS } from "@/game/blast/levels";
 import { useProgress } from "@/store/useProgress";
 import { useHud } from "@/store/useHud";
 import { Button, Panel } from "@/components/ui";
@@ -13,12 +14,22 @@ function Overlay({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function MainMenu({ onPlay, onSettings }: { onPlay: () => void; onSettings: () => void }) {
+export function MainMenu({
+  onPlay,
+  onSettings,
+  title = "ChromaSand",
+  subtitle = "Clear rows of one color. Watch them pour into sand.",
+}: {
+  onPlay: () => void;
+  onSettings: () => void;
+  title?: string;
+  subtitle?: string;
+}) {
   return (
     <Overlay>
       <Panel>
-        <h1 className="mb-1 font-mono text-4xl font-bold tracking-tight text-teal-300">ChromaSand</h1>
-        <p className="mb-6 font-mono text-sm opacity-70">Clear rows of one color. Watch them pour into sand.</p>
+        <h1 className="mb-1 font-mono text-4xl font-bold tracking-tight text-teal-300">{title}</h1>
+        <p className="mb-6 font-mono text-sm opacity-70">{subtitle}</p>
         <div className="flex flex-col gap-3">
           <Button onClick={onPlay}>Play</Button>
           <Button variant="ghost" onClick={onSettings}>Settings</Button>
@@ -55,6 +66,40 @@ export function LevelSelect({ onStart, onBack }: { onStart: (id: number) => void
               </button>
             );
           })}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="ghost" onClick={onBack}>Back</Button>
+        </div>
+      </Panel>
+    </Overlay>
+  );
+}
+
+export function BlastLevelSelect({
+  onStart,
+  onBack,
+}: {
+  onStart: (id: number) => void;
+  onBack: () => void;
+}) {
+  return (
+    <Overlay>
+      <Panel title="Block Drop — Select Level">
+        <div className="grid grid-cols-2 gap-2">
+          {BLAST_LEVELS.map((l) => (
+            <button
+              key={l.id}
+              onClick={() => onStart(l.id)}
+              className="rounded-lg bg-white/10 p-3 text-left font-mono text-sm transition hover:bg-white/20"
+            >
+              <div className="font-bold">
+                {l.id}. {l.name}
+              </div>
+              <div className="text-xs opacity-60">
+                target {l.targetPoints.toLocaleString()} · {l.colors.length} colors
+              </div>
+            </button>
+          ))}
         </div>
         <div className="mt-4 flex justify-end">
           <Button variant="ghost" onClick={onBack}>Back</Button>

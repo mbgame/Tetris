@@ -30,7 +30,14 @@ export default function GameCanvas() {
   }, []);
 
   return (
-    <div ref={containerRef} id="game-root" className="h-full w-full">
+    <div
+      ref={containerRef}
+      id="game-root"
+      className="h-full w-full"
+      // touch-action:none stops the browser from hijacking drags as scroll/zoom
+      // (essential for fluid block dragging in Block Drop mode); none of select.
+      style={{ touchAction: "none", userSelect: "none", WebkitUserSelect: "none" }}
+    >
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black">
           <div className="flex flex-col items-center gap-3 font-mono text-teal-300">
