@@ -26,8 +26,18 @@ export default function HudBridge() {
       hud({ hold: p.piece, canHold: p.canHold });
     const onState = (p: { state: HudPhase }) => hud({ phase: p.state });
     const onCoins = (p: { coins: number }) => hud({ coins: p.coins });
-    const onPowerup = (p: { multiplier: number; multMoves: number; hammerArmed: boolean }) =>
-      hud({ multiplier: p.multiplier, multMoves: p.multMoves, hammerArmed: p.hammerArmed });
+    const onPowerup = (p: {
+      multiplier: number;
+      multMoves: number;
+      hammerArmed: boolean;
+      rotateArmed: boolean;
+    }) =>
+      hud({
+        multiplier: p.multiplier,
+        multMoves: p.multMoves,
+        hammerArmed: p.hammerArmed,
+        rotateArmed: p.rotateArmed,
+      });
 
     const onComplete = (p: { level: number; score: number; timeMs?: number }) => {
       useProgress.getState().unlock(p.level + 1);

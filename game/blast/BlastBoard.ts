@@ -66,6 +66,18 @@ export class BlastBoard {
     return false;
   }
 
+  /**
+   * How many rows+columns would clear if `cells` were placed at (ox, oy).
+   * Temporarily writes then restores the grid — caller must canPlace first.
+   * Used by the idle-hint heuristic.
+   */
+  linesIfPlaced(cells: { x: number; y: number }[], ox: number, oy: number): number {
+    for (const c of cells) this.grid[oy + c.y][ox + c.x] = 1;
+    const { rows, cols } = this.getFullLines();
+    for (const c of cells) this.grid[oy + c.y][ox + c.x] = EMPTY;
+    return rows.length + cols.length;
+  }
+
   /** Indices of every fully-filled row and column. */
   getFullLines(): { rows: number[]; cols: number[] } {
     const rows: number[] = [];

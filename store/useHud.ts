@@ -22,6 +22,7 @@ interface HudStore {
   multiplier: number;
   multMoves: number;
   hammerArmed: boolean;
+  rotateArmed: boolean;
   set: (p: Partial<HudStore>) => void;
 }
 
@@ -42,5 +43,6 @@ export const useHud = create<HudStore>((set) => ({
   multiplier: 1,
   multMoves: 0,
   hammerArmed: false,
+  rotateArmed: false,
   set: (p) => set(p),
 }));

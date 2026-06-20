@@ -1,5 +1,4 @@
 import Phaser from "phaser";
-import { BLOCK_TEX } from "../render/BlockRenderer";
 import { tintFor } from "../render/palette";
 import type { BlastCell } from "./BlastBoard";
 
@@ -15,6 +14,7 @@ export class BlastFx {
     private scene: Phaser.Scene,
     private palette: number[],
     private reduceMotion: boolean,
+    private tex: string,
   ) {}
 
   setReduceMotion(v: boolean) {
@@ -117,7 +117,7 @@ export class BlastFx {
       const tint = tintFor(c.colorId, this.palette);
 
       // main block pops bright then shrinks away
-      const main = this.scene.add.image(x, y, BLOCK_TEX).setDisplaySize(cell, cell).setDepth(50).setTint(0xffffff);
+      const main = this.scene.add.image(x, y, this.tex).setDisplaySize(cell, cell).setDepth(50).setTint(0xffffff);
       this.scene.tweens.add({
         targets: main,
         scale: main.scale * 1.5,
@@ -133,7 +133,7 @@ export class BlastFx {
 
       // 2 shards fly outward
       for (let i = 0; i < 2; i++) {
-        const shard = this.scene.add.image(x, y, BLOCK_TEX).setDisplaySize(cell * 0.4, cell * 0.4).setDepth(49).setTint(tint);
+        const shard = this.scene.add.image(x, y, this.tex).setDisplaySize(cell * 0.4, cell * 0.4).setDepth(49).setTint(tint);
         const ang = Phaser.Math.FloatBetween(0, Math.PI * 2);
         const dist = cell * Phaser.Math.FloatBetween(0.8, 1.8);
         this.scene.tweens.add({
@@ -202,7 +202,7 @@ export class BlastFx {
     for (let i = 0; i < 40; i++) {
       const x = Phaser.Math.Between(0, width);
       const tint = colors[Phaser.Math.Between(0, colors.length - 1)] ?? 0xffffff;
-      const shard = this.scene.add.image(x, -20, BLOCK_TEX).setDisplaySize(18, 18).setDepth(124).setTint(tint);
+      const shard = this.scene.add.image(x, -20, this.tex).setDisplaySize(18, 18).setDepth(124).setTint(tint);
       this.scene.tweens.add({
         targets: shard,
         y: height + 40,

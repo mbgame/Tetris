@@ -160,3 +160,65 @@ test("power-ups: multiplier and refresh work", async ({ page }) => {
   );
   expect(replaced).toBe(true);
 });
+
+test("idle for 5s shows a best-move hint, dismissed on activity", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByText("Calm Start").click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__?.scene.getScene("BlastScene")?.["running"] === true,
+    { timeout: 12000 },
+  );
+
+  // do nothing → hint appears after the idle threshold
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__.scene.getScene("BlastScene")["hintActive"] === true,
+    { timeout: 9000 },
+  );
+
+  // any pointer move over the canvas dismisses it
+  const c = await page.evaluate(() => {
+    const r = (window as any).__PHASER_GAME__.canvas.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.move(c.x + 10, c.y + 10);
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__.scene.getScene("BlastScene")["hintActive"] === false,
+    { timeout: 3000 },
+  );
+});
+
+test("rotate power-up arms and spins a tray piece", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByText("Calm Start").click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__?.scene.getScene("BlastScene")?.["running"] === true,
+    { timeout: 12000 },
+  );
+  await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    s["coins"] = 40;
+    s["emitCoins"]();
+  });
+
+  await page.getByRole("button", { name: /Rotate/ }).click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__.scene.getScene("BlastScene")["rotateArmed"] === true,
+    { timeout: 5000 },
+  );
+
+  const res = await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    const piece = s["tray"].find((t: any) => t);
+    const before = JSON.stringify(piece.shape.cells);
+    const square = piece.shape.w === piece.shape.h;
+    const r = piece.grabRect;
+    s["useRotate"]({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
+    const after = JSON.stringify(s["tray"][piece.slot].shape.cells);
+    return { square, changed: before !== after, armed: s["rotateArmed"] };
+  });
+  expect(res.armed).toBe(false); // arm consumed
+  if (!res.square) expect(res.changed).toBe(true); // non-square pieces visibly rotate
+});

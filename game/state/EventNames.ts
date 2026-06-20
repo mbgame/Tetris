@@ -151,10 +151,12 @@ export interface PowerupUpdatePayload {
   multMoves: number;
   /** hammer armed → next board tap smashes a block */
   hammerArmed: boolean;
+  /** rotate armed → next tray-piece tap spins it 90° */
+  rotateArmed: boolean;
 }
 
 export interface RequestPowerupPayload {
-  kind: "refresh" | "bomb" | "hammer" | "mult" | "color";
+  kind: "refresh" | "bomb" | "hammer" | "mult" | "rotate";
 }
 
 export interface InputActionPayload {

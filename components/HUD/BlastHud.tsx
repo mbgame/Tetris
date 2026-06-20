@@ -18,7 +18,8 @@ export default function BlastHud({
   onPause: () => void;
   onSettings: () => void;
 }) {
-  const { score, level, levelName, linesToTarget, coins, multiplier, multMoves, hammerArmed } = useHud();
+  const { score, level, levelName, linesToTarget, coins, multiplier, multMoves, hammerArmed, rotateArmed } =
+    useHud();
 
   const buy = (kind: PowerupKind) => bus.emit(EventName.RequestPowerup, { kind });
 
@@ -76,7 +77,7 @@ export default function BlastHud({
         </div>
         {POWERUPS.map((p) => {
           const affordable = coins >= p.cost;
-          const armed = p.kind === "hammer" && hammerArmed;
+          const armed = (p.kind === "hammer" && hammerArmed) || (p.kind === "rotate" && rotateArmed);
           return (
             <button
               key={p.kind}

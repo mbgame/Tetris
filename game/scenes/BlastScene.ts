@@ -1,12 +1,13 @@
 import Phaser from "phaser";
 import { BlastBoard, type BlastCell } from "../blast/BlastBoard";
-import { randomPiece, type PieceShape } from "../blast/pieces";
+import { randomPiece, rotateShape, type PieceShape } from "../blast/pieces";
 import { BLAST_LEVEL_COUNT, getBlastLevel, type BlastLevelConfig } from "../blast/levels";
 import { placementScore, clearScore } from "../blast/scoring";
 import { BlastFx } from "../blast/BlastFx";
+import { ensureMaterials, materialForLevel } from "../blast/materials";
 import { POWERUP_COST, MULT_DURATION, MULT_MAX, type PowerupKind } from "../blast/powerups";
 import { paletteFromColors, tintFor } from "../render/palette";
-import { ensureBlockTexture, BLOCK_TEX } from "../render/BlockRenderer";
+import { ensureBlockTexture } from "../render/BlockRenderer";
 import { GameState } from "../core/GameState";
 import { createRng } from "../core/rng";
 import { bus } from "../state/events";
@@ -15,6 +16,7 @@ import { EventName } from "../state/EventNames";
 const TRAY_SLOTS = 3;
 const TRAY_SCALE_MAX = 0.7; // cap on parked piece size (small pieces don't blow up)
 const RIGHT_RESERVE = 0.2; // fraction of width kept clear for the DOM power-up rail
+const IDLE_HINT_MS = 5000; // idle time before a best-move hint appears
 
 interface TrayPiece {
   container: Phaser.GameObjects.Container;
@@ -45,6 +47,8 @@ export class BlastScene extends Phaser.Scene {
   private palette!: number[];
   private rng: () => number = Math.random;
   private fx!: BlastFx;
+  private matKeys: string[] = [];
+  private blockTex = "blast-mat-0"; // per-level block material texture
 
   private cell = 48;
   private originX = 0;
@@ -64,6 +68,14 @@ export class BlastScene extends Phaser.Scene {
   private scoreMult = 1;
   private multMoves = 0;
   private hammerArmed = false;
+  private rotateArmed = false;
+
+  // idle-hint state
+  private lastActivity = 0;
+  private hintActive = false;
+  private hintGfx?: Phaser.GameObjects.Graphics;
+  private hintTween?: Phaser.Tweens.Tween;
+  private hintPiece?: TrayPiece;
 
   private active = false; // owns the session (drives bus emissions)
   private running = false; // drag input enabled
@@ -75,7 +87,8 @@ export class BlastScene extends Phaser.Scene {
   }
 
   create() {
-    ensureBlockTexture(this); // shared rounded-block texture (also used by classic)
+    ensureBlockTexture(this); // shared rounded-block texture (used by FX shards fallback)
+    this.matKeys = ensureMaterials(this); // per-level block materials
     this.fsm = new GameState("BOOT");
     this.bindIntents();
     this.bindDrag();
@@ -158,6 +171,8 @@ export class BlastScene extends Phaser.Scene {
     this.scoreMult = 1;
     this.multMoves = 0;
     this.hammerArmed = false;
+    this.rotateArmed = false;
+    this.blockTex = materialForLevel(this.matKeys, id);
 
     bus.emit(EventName.LevelChange, {
       level: this.level.id,
@@ -173,7 +188,11 @@ export class BlastScene extends Phaser.Scene {
     this.dragTarget = undefined;
     this.gridGfx = undefined;
     this.ghostGfx = undefined;
-    this.fx = new BlastFx(this, this.palette, this.reduceMotion);
+    this.hintGfx = undefined;
+    this.hintTween = undefined;
+    this.hintPiece = undefined;
+    this.hintActive = false;
+    this.fx = new BlastFx(this, this.palette, this.reduceMotion, this.blockTex);
 
     this.fsm = new GameState("MENU");
     this.fsm.transition("COUNTDOWN");
@@ -259,7 +278,7 @@ export class BlastScene extends Phaser.Scene {
     this.boardLayer.clear(true, true);
     this.board.forEachCell((x, y, colorId) => {
       const { x: px, y: py } = this.cellCenter(x, y);
-      const img = this.boardLayer.create(px, py, BLOCK_TEX) as Phaser.GameObjects.Image;
+      const img = this.boardLayer.create(px, py, this.blockTex) as Phaser.GameObjects.Image;
       img.setDisplaySize(this.cell, this.cell);
       img.setTint(tintFor(colorId, this.palette));
     });
@@ -278,9 +297,9 @@ export class BlastScene extends Phaser.Scene {
     this.tray = [];
   }
 
-  private makeTrayPiece(slot: number): TrayPiece {
-    const shape = randomPiece(this.rng, this.level.difficulty);
-    const colorId = 1 + Math.floor(this.rng() * this.level.colors.length);
+  private makeTrayPiece(slot: number, override?: { shape: PieceShape; colorId: number }): TrayPiece {
+    const shape = override?.shape ?? randomPiece(this.rng, this.level.difficulty);
+    const colorId = override?.colorId ?? 1 + Math.floor(this.rng() * this.level.colors.length);
     const { width, height } = this.scale.gameSize;
     const cell = this.cell;
     // tray spans the same left play area as the board (right strip is the rail)
@@ -296,7 +315,7 @@ export class BlastScene extends Phaser.Scene {
 
     const container = this.add.container(0, 0).setDepth(40);
     for (const c of shape.cells) {
-      const img = this.add.image(c.x * cell, c.y * cell, BLOCK_TEX);
+      const img = this.add.image(c.x * cell, c.y * cell, this.blockTex);
       img.setDisplaySize(cell, cell);
       img.setTint(tintFor(colorId, this.palette));
       container.add(img);
@@ -338,8 +357,13 @@ export class BlastScene extends Phaser.Scene {
     // very first press, with no pointer-move priming required.
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (!this.running || this.clearing) return;
+      this.markActivity();
       if (this.hammerArmed) {
         this.useHammer(pointer);
+        return;
+      }
+      if (this.rotateArmed) {
+        this.useRotate(pointer);
         return;
       }
       if (this.dragging) return;
@@ -353,10 +377,14 @@ export class BlastScene extends Phaser.Scene {
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      this.markActivity(); // any movement counts as activity (dismisses idle hint)
       if (this.dragging) this.moveDragged(pointer);
     });
 
-    this.input.on("pointerup", () => this.dropDragged());
+    this.input.on("pointerup", () => {
+      this.markActivity();
+      this.dropDragged();
+    });
   }
 
   /** Position the dragged piece above the pointer + refresh the ghost preview. */
@@ -381,9 +409,27 @@ export class BlastScene extends Phaser.Scene {
     else this.snapBack(piece);
   }
 
-  /** Safety net: if the pointer was released off-canvas (no pointerup), drop. */
+  /** Safety net for off-canvas release + idle-hint trigger. */
   update() {
     if (this.dragging && !this.input.activePointer.isDown) this.dropDragged();
+
+    // idle hint: after 5s of no activity while it's the player's turn, suggest a move
+    if (
+      this.running &&
+      !this.clearing &&
+      !this.dragging &&
+      !this.hintActive &&
+      this.fsm.is("PLAYING") &&
+      this.time.now - this.lastActivity > IDLE_HINT_MS
+    ) {
+      this.showHint();
+    }
+  }
+
+  /** Reset the idle timer + dismiss any visible hint (the player is acting). */
+  private markActivity() {
+    this.lastActivity = this.time.now;
+    if (this.hintActive) this.clearHint();
   }
 
   private targetOrigin(piece: TrayPiece): { col: number; row: number } {
@@ -436,6 +482,7 @@ export class BlastScene extends Phaser.Scene {
 
   // ── placement → clears → scoring ─────────────────────────────────────────
   private commitPlacement(piece: TrayPiece, col: number, row: number) {
+    this.markActivity();
     this.board.place(piece.shape.cells, col, row, piece.colorId);
     this.tray[piece.slot] = null;
     piece.container.destroy();
@@ -551,14 +598,26 @@ export class BlastScene extends Phaser.Scene {
     if (!this.active || !this.running || this.clearing) return;
     const cost = POWERUP_COST[p.kind];
     if (this.coins < cost) return;
+    this.markActivity();
 
-    // hammer just arms; everything else acts immediately
+    // hammer + rotate just arm; everything else acts immediately
     if (p.kind === "hammer") {
       this.coins -= cost;
       this.hammerArmed = true;
+      this.rotateArmed = false;
       this.emitCoins();
       this.emitPowerup();
       this.fx.floatText(this.scale.width / 2, this.scale.height * 0.33, "🔨 Tap a block", { color: "#fca5a5" });
+      bus.emit(EventName.Sfx, { name: "ui" });
+      return;
+    }
+    if (p.kind === "rotate") {
+      this.coins -= cost;
+      this.rotateArmed = true;
+      this.hammerArmed = false;
+      this.emitCoins();
+      this.emitPowerup();
+      this.fx.floatText(this.scale.width / 2, this.scale.height * 0.33, "🔃 Tap a tray piece", { color: "#7dd3fc" });
       bus.emit(EventName.Sfx, { name: "ui" });
       return;
     }
@@ -571,9 +630,6 @@ export class BlastScene extends Phaser.Scene {
       case "refresh":
         this.discardTray();
         this.refillTray();
-        break;
-      case "color":
-        this.recolorTray();
         break;
       case "bomb":
         this.clearBottomRow();
@@ -607,16 +663,22 @@ export class BlastScene extends Phaser.Scene {
     this.checkGameOver();
   }
 
-  /** Repaint all tray pieces to one shared random color (recolor power-up). */
-  private recolorTray() {
-    const colorId = 1 + Math.floor(this.rng() * this.level.colors.length);
-    const tint = tintFor(colorId, this.palette);
-    for (const t of this.tray) {
-      if (!t) continue;
-      t.colorId = colorId;
-      for (const child of t.container.list) (child as Phaser.GameObjects.Image).setTint(tint);
-      this.tweens.add({ targets: t.container, scale: t.trayScale * 1.15, duration: 120, yoyo: true });
-    }
+  /** Rotate the tapped tray piece 90° (rotate power-up). Empty tap cancels arm. */
+  private useRotate(pointer: Phaser.Input.Pointer) {
+    const piece = this.tray.find(
+      (t): t is TrayPiece => t !== null && Phaser.Geom.Rectangle.Contains(t.grabRect, pointer.x, pointer.y),
+    );
+    this.rotateArmed = false;
+    this.emitPowerup();
+    if (!piece) return; // tapped outside a tray slot → just cancel
+    const rotated = rotateShape(piece.shape);
+    const slot = piece.slot;
+    piece.container.destroy();
+    this.tray[slot] = this.makeTrayPiece(slot, { shape: rotated, colorId: piece.colorId });
+    const fresh = this.tray[slot]!;
+    this.tweens.add({ targets: fresh.container, angle: { from: -90, to: 0 }, duration: 200, ease: "Back.easeOut" });
+    bus.emit(EventName.Sfx, { name: "rotate" });
+    this.checkGameOver();
   }
 
   /** Delete the bottom-most filled row (clear-row power-up). */
@@ -639,6 +701,77 @@ export class BlastScene extends Phaser.Scene {
     bus.emit(EventName.Sfx, { name: "clear", intensity: 2 });
     this.renderBoard();
     this.checkGameOver();
+  }
+
+  // ── idle hint ─────────────────────────────────────────────────────────────
+  /** Best (piece, col, row): maximize lines cleared, tie-break toward the edges. */
+  private bestMove(): { piece: TrayPiece; col: number; row: number } | null {
+    let best: { piece: TrayPiece; col: number; row: number } | null = null;
+    let bestScore = -1;
+    for (const piece of this.tray) {
+      if (!piece) continue;
+      for (let row = 0; row < this.board.size; row++) {
+        for (let col = 0; col < this.board.size; col++) {
+          if (!this.board.canPlace(piece.shape.cells, col, row)) continue;
+          const lines = this.board.linesIfPlaced(piece.shape.cells, col, row);
+          // weight clears heavily; otherwise prefer bottom-right to keep the top open
+          const s = lines * 1000 + (col + row);
+          if (s > bestScore) {
+            bestScore = s;
+            best = { piece, col, row };
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Pulse the recommended tray piece + outline its best landing cells. */
+  private showHint() {
+    const move = this.bestMove();
+    if (!move) return;
+    this.hintActive = true;
+    this.hintPiece = move.piece;
+
+    // pulse the tray piece
+    this.hintTween = this.tweens.add({
+      targets: move.piece.container,
+      scale: move.piece.trayScale * 1.18,
+      duration: 480,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    // pulsing outline on the board target
+    if (!this.hintGfx) this.hintGfx = this.add.graphics().setDepth(28);
+    const g = this.hintGfx;
+    g.clear();
+    g.lineStyle(3, 0xfde047, 0.95);
+    g.fillStyle(0xfde047, 0.18);
+    for (const c of move.piece.shape.cells) {
+      const px = this.originX + (move.col + c.x) * this.cell;
+      const py = this.originY + (move.row + c.y) * this.cell;
+      g.fillRoundedRect(px + 2, py + 2, this.cell - 4, this.cell - 4, 6);
+      g.strokeRoundedRect(px + 2, py + 2, this.cell - 4, this.cell - 4, 6);
+    }
+    this.tweens.add({ targets: g, alpha: { from: 0.35, to: 1 }, duration: 480, yoyo: true, repeat: -1 });
+    bus.emit(EventName.Sfx, { name: "ui" });
+  }
+
+  private clearHint() {
+    this.hintActive = false;
+    this.hintTween?.stop();
+    this.hintTween = undefined;
+    if (this.hintPiece) {
+      this.hintPiece.container.setScale(this.hintPiece.trayScale);
+      this.hintPiece = undefined;
+    }
+    if (this.hintGfx) {
+      this.tweens.killTweensOf(this.hintGfx);
+      this.hintGfx.destroy();
+      this.hintGfx = undefined;
+    }
   }
 
   /** Spend one multiplier "move"; reset to ×1 when exhausted. */
@@ -707,6 +840,7 @@ export class BlastScene extends Phaser.Scene {
     this.fsm.transition("PLAYING");
     bus.emit(EventName.StateChange, { state: "PLAYING" });
     this.running = true;
+    this.lastActivity = this.time.now;
     this.checkGameOver();
   }
 
@@ -731,6 +865,7 @@ export class BlastScene extends Phaser.Scene {
       multiplier: this.scoreMult,
       multMoves: this.multMoves,
       hammerArmed: this.hammerArmed,
+      rotateArmed: this.rotateArmed,
     });
   }
 }
