@@ -63,6 +63,7 @@ export class BlastScene extends Phaser.Scene {
 
   private tray: (TrayPiece | null)[] = [];
   private dragging?: TrayPiece;
+  private dragPointer?: Phaser.Input.Pointer; // the specific pointer holding the drag
   private dragTarget?: { col: number; row: number; valid: boolean };
 
   private score = 0;
@@ -92,6 +93,7 @@ export class BlastScene extends Phaser.Scene {
   create() {
     ensureBlockTexture(this); // shared rounded-block texture (used by FX shards fallback)
     this.matKeys = ensureMaterials(this); // per-level block materials
+    this.input.addPointer(2); // ensure touch pointers exist alongside the mouse pointer
     this.fsm = new GameState("BOOT");
     this.bindIntents();
     this.bindDrag();
@@ -191,6 +193,7 @@ export class BlastScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.tray = [];
     this.dragging = undefined;
+    this.dragPointer = undefined;
     this.dragTarget = undefined;
     this.gridGfx = undefined;
     this.ghostGfx = undefined;
@@ -384,18 +387,19 @@ export class BlastScene extends Phaser.Scene {
       );
       if (!piece) return;
       this.dragging = piece;
+      this.dragPointer = pointer; // bind this exact pointer (touch id) to the drag
       piece.container.setScale(1).setDepth(60);
       this.moveDragged(pointer);
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       this.markActivity(); // any movement counts as activity (dismisses idle hint)
-      if (this.dragging) this.moveDragged(pointer);
+      if (this.dragging && pointer.id === this.dragPointer?.id) this.moveDragged(pointer);
     });
 
-    this.input.on("pointerup", () => {
+    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
       this.markActivity();
-      this.dropDragged();
+      if (this.dragging && pointer.id === this.dragPointer?.id) this.dropDragged();
     });
   }
 
@@ -414,6 +418,7 @@ export class BlastScene extends Phaser.Scene {
     const piece = this.dragging;
     if (!piece) return;
     this.dragging = undefined;
+    this.dragPointer = undefined;
     this.ghostGfx?.clear();
     const t = this.dragTarget;
     this.dragTarget = undefined;
@@ -423,7 +428,10 @@ export class BlastScene extends Phaser.Scene {
 
   /** Safety net for off-canvas release + idle-hint trigger. */
   update() {
-    if (this.dragging && !this.input.activePointer.isDown) this.dropDragged();
+    // Drop if the specific pointer holding the drag was released (e.g. off-canvas).
+    // Must check that pointer — on touch, input.activePointer may be the idle mouse
+    // pointer (isDown=false), which previously dropped grabs instantly.
+    if (this.dragging && this.dragPointer && !this.dragPointer.isDown) this.dropDragged();
 
     // idle hint: after 5s of no activity while it's the player's turn, suggest a move
     if (

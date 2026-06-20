@@ -223,6 +223,32 @@ test("rotate power-up arms and spins a tray piece", async ({ page }) => {
   if (!res.square) expect(res.changed).toBe(true); // non-square pieces visibly rotate
 });
 
+test("a held drag is not dropped while its pointer stays down (touch fix)", async ({ page }) => {
+  await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /PLAY/ }).click();
+  await page.getByText("Calm Start").click();
+  await page.waitForFunction(
+    () => (window as any).__PHASER_GAME__?.scene.getScene("BlastScene")?.["running"] === true,
+    { timeout: 12000 },
+  );
+  // Reproduce the device bug: a touch pointer holds the drag while the mouse
+  // pointer (input.activePointer) is idle. update() must check the drag pointer.
+  const r = await page.evaluate(() => {
+    const s = (window as any).__PHASER_GAME__.scene.getScene("BlastScene");
+    s["dragging"] = s["tray"].find((t: any) => t);
+    s["dragPointer"] = { id: 9, isDown: true };
+    const mouseIdle = s["input"].activePointer.isDown === false;
+    s["update"](0, 16);
+    const heldStill = s["dragging"] != null;
+    s["dragPointer"].isDown = false;
+    s["update"](0, 16);
+    return { mouseIdle, heldStill, droppedOnRelease: s["dragging"] == null };
+  });
+  expect(r.mouseIdle).toBe(true);
+  expect(r.heldStill).toBe(true);
+  expect(r.droppedOnRelease).toBe(true);
+});
+
 test("settings can return to the main menu (landing)", async ({ page }) => {
   await page.goto("/play?mode=blast", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /Settings/ }).click();
